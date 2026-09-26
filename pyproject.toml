@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gitstat"
+version = "0.1.0"
+description = "Developer contribution analytics for GitHub repositories, built on git and gh."
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+gitstat = "gitstat.cli:main"
+
+[tool.setuptools]
+packages = ["gitstat"]
+
+[tool.setuptools.package-data]
+gitstat = ["templates/*"]

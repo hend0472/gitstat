@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+__CSS__
+</style>
+</head>
+<body>
+<nav class="top"><div class="in">
+  <span class="brand">gitstat</span>
+  <a href="#overview">Overview</a>
+  <a href="#trends">Team trends</a>
+  <a href="#compare">Compare</a>
+  <a href="#developers">Developers</a>
+  <a href="#detail">Developer detail</a>
+  <a href="#definitions">Definitions</a>
+  <span class="sp"></span>
+  <button class="ghost" id="theme" type="button" aria-label="Toggle color theme">Theme: auto</button>
+</div></nav>
+
+<main>
+  <section id="overview">
+    <h1 id="title"></h1>
+    <p class="sub" id="window"></p>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section id="trends">
+    <h2>Team trends</h2>
+    <p class="lede">How work flows week to week, and how long PRs take to move.</p>
+    <div class="stack">
+      <div class="card chart" id="c-stacked">
+        <div class="chart-head">
+          <div><div class="chart-title">Weekly activity by developer</div>
+            <div class="chart-sub">Top 7 contributors for the selected activity; everyone else is grouped as Other</div></div>
+          <div class="controls"><div class="seg" id="stack-seg" role="group" aria-label="Activity"></div></div>
+        </div>
+        <div class="legend"></div><div class="plot"></div>
+      </div>
+      <div class="grid2">
+        <div class="card chart" id="c-hist-merge">
+          <div class="chart-head"><div><div class="chart-title">Time to merge</div>
+            <div class="chart-sub">Merged PRs opened in the window, by how long they took</div></div></div>
+          <div class="plot"></div>
+        </div>
+        <div class="card chart" id="c-hist-fb">
+          <div class="chart-head"><div><div class="chart-title">Wait for first feedback</div>
+            <div class="chart-sub">Time until someone else reviewed or commented</div></div></div>
+          <div class="plot"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="compare">
+    <h2>Compare developers</h2>
+    <p class="lede">Rankings and relationships across the team. Developers selected in <a href="#detail">Developer detail</a> are highlighted in every chart.</p>
+    <div class="stack">
+      <div class="card chart" id="c-leader">
+        <div class="chart-head">
+          <div><div class="chart-title" id="leader-title">Ranking</div><div class="chart-sub" id="leader-sub"></div></div>
+          <div class="controls">
+            <label>Metric <select id="leader-metric"></select></label>
+            <div class="seg" id="leader-n" role="group" aria-label="Rows shown"></div>
+          </div>
+        </div>
+        <div class="plot"></div>
+      </div>
+      <div class="grid2">
+        <div class="card chart" id="c-scatter">
+          <div class="chart-head">
+            <div><div class="chart-title">Volume vs. speed</div><div class="chart-sub">Each dot is a developer · dashed lines are team medians</div></div>
+            <div class="controls">
+              <label>X <select id="sc-x"></select></label>
+              <label>Y <select id="sc-y"></select></label>
+            </div>
+          </div>
+          <div class="plot"></div>
+        </div>
+        <div class="card chart" id="c-matrix">
+          <div class="chart-head"><div><div class="chart-title">Who reviews whom</div>
+            <div class="chart-sub">Reviews and comments each person (row) left on another's PRs (column)</div></div></div>
+          <div class="plot"></div>
+        </div>
+      </div>
+      <div class="card chart" id="c-strip">
+        <div class="chart-head">
+          <div><div class="chart-title">Cycle time spread by developer</div>
+            <div class="chart-sub">Each dot is one PR · the vertical tick is that developer's median · log scale</div></div>
+          <div class="controls"><div class="seg" id="strip-seg" role="group" aria-label="Measure"></div></div>
+        </div>
+        <div class="plot"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="developers">
+    <h2>Developers</h2>
+    <p class="lede">Every contributor in the window. Click a row to open their detail; click a header to sort.</p>
+    <div class="card">
+      <div class="toolbar">
+        <input id="filter" type="search" placeholder="Filter developers…" aria-label="Filter developers">
+        <span class="muted" id="count"></span>
+      </div>
+      <div class="tablewrap tall"><table id="devtable"><thead></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="detail">
+    <h2>Developer detail</h2>
+    <p class="lede">One developer against the team, optionally side by side with a second.</p>
+    <div class="dev-bar">
+      <label class="muted">Developer <select id="pick-a"></select></label>
+      <label class="muted">Compare with <select id="pick-b"></select></label>
+    </div>
+    <div id="detail-body" class="stack"></div>
+  </section>
+
+  <section id="definitions">
+    <h2>Metric definitions</h2>
+    <details class="card"><summary>How each number is calculated</summary><dl class="gloss" id="gloss"></dl></details>
+    <p class="note">Medians, ranks and percentiles compare each developer only with peers active in the same area (authors for
+    authoring metrics, reviewers for review metrics, committers for commit metrics). These numbers describe how work flows, not
+    how valuable it is: use them to start conversations, alongside context about scope, mentoring, design and on-call work that
+    doesn't show up in git.</p>
+  </section>
+</main>
+<div id="tip" role="tooltip"></div>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+__JS__
+</script>
+</body>
+</html>
