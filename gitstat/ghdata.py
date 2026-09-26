@@ -35,12 +35,13 @@ query($owner: String!, $name: String!, $pageSize: Int!, $cursor: String) {
           totalCount
           nodes {
             commit {
-              oid committedDate authoredDate additions deletions
+              oid committedDate authoredDate additions deletions messageHeadline
+              parents { totalCount }
               author { name email user { login } }
             }
           }
         }
-        timelineItems(first: 60, itemTypes: [REVIEW_REQUESTED_EVENT, READY_FOR_REVIEW_EVENT]) {
+        timelineItems(first: 80, itemTypes: [REVIEW_REQUESTED_EVENT, READY_FOR_REVIEW_EVENT, HEAD_REF_FORCE_PUSHED_EVENT]) {
           nodes {
             __typename
             ... on ReviewRequestedEvent {
@@ -48,6 +49,7 @@ query($owner: String!, $name: String!, $pageSize: Int!, $cursor: String) {
               requestedReviewer { __typename ... on User { login } }
             }
             ... on ReadyForReviewEvent { createdAt }
+            ... on HeadRefForcePushedEvent { createdAt actor { __typename login } }
           }
         }
       }
@@ -113,14 +115,22 @@ def _cache_path(repo: str) -> Path:
     return _cache_dir() / (repo.replace("/", "__") + ".json")
 
 
+# Bump when PR_QUERY gains fields, so older caches are refetched instead of silently lacking data.
+CACHE_VERSION = 2
+
+
 def _load_cache(repo: str) -> dict:
     path = _cache_path(repo)
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text())
+        cache = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
         return {}
+    if cache.get("version") != CACHE_VERSION:
+        log("gh: cached data is from an older gitstat version; refetching")
+        return {}
+    return cache
 
 
 def _save_cache(repo: str, cache: dict) -> None:
@@ -183,6 +193,7 @@ def fetch_pull_requests(repo: str, since: datetime, use_cache: bool = True, page
     new_covered = min(since, covered_since) if covered_since and covered_since <= since else since
     if use_cache:
         _save_cache(repo, {
+            "version": CACHE_VERSION,
             "prs": prs,
             "covered_since": new_covered.isoformat(),
             "fetched_at": started.isoformat(),

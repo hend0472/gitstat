@@ -87,6 +87,7 @@ def apply_names(report: dict, mapping: dict[str, str]) -> None:
         dev["github_login"] = login
         dev["login"] = display(login)
         dev["interactions"] = {display(k): v for k, v in dev.get("interactions", {}).items()}
+        dev["review_prs"] = {display(k): v for k, v in dev.get("review_prs", {}).items()}
         renamed[dev["login"]] = dev
     report["developers"] = renamed
 

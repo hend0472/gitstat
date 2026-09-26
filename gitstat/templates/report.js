@@ -5,19 +5,20 @@ const M = Object.fromEntries(R.metrics.map(m => [m.key, m]));
 const DEVS = R.developers;
 const LOGINS = Object.keys(DEVS);
 const TEAM = R.team.median;
-const WEEKS = R.weeks;
+const WEEKS = R.periods;  // weeks or sprints, depending on --sprint-*
+const PKIND = R.period.kind;
+const periodTitle = p => (PKIND === 'sprint' ? `Sprint ${p.label}` : `Week of ${p.start.slice(0, 10)}`) + (p.in_progress ? ' (in progress)' : '');
 const SECTIONS = ['Authoring', 'Reviewing', 'Commits'];
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const state = { a: null, b: null, stack: 'commits', leader: 'prs_merged', leaderN: 15,
-                sx: 'prs_merged', sy: 'time_to_merge_median', strip: 'hours_to_merge' };
+                sx: 'prs_merged', sy: 'time_to_merge_median', strip: 'hours_to_merge', matrix: 'pct' };
 
 // ------------------------------------------------------------------ formatting
 const fmtH = h => h == null ? '–' : h < 1/60 ? '<1m' : h < 1 ? Math.round(h*60)+'m' : h < 48 ? h.toFixed(1)+'h' : (h/24).toFixed(1)+'d';
 const fmtN = v => v == null ? '–' : Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, {maximumFractionDigits: 1});
 const fmtP = v => v == null ? '–' : Math.round(v*100)+'%';
 const fmt = (k, v) => { const kind = M[k].kind; return kind === 'hours' ? fmtH(v) : kind === 'pct' ? fmtP(v) : fmtN(v); };
-const short = d => d.slice(5).replace('-', '/');
 const _ctx = document.createElement('canvas').getContext('2d');
 const textW = (s, px = 11, bold = false) => {
   _ctx.font = `${bold ? 600 : 400} ${px}px system-ui, -apple-system, "Segoe UI", sans-serif`;
@@ -107,6 +108,7 @@ document.addEventListener('focusin', e => {
   const r = e.target.getBoundingClientRect(); tipRender(p); tipMove(r.left + r.width / 2, r.top); highlight(e.target);
 });
 document.addEventListener('focusout', () => { tipHide(); highlight(null); });
+addEventListener('scroll', () => { tipHide(); highlight(null); }, { passive: true });
 let lit = [];
 function highlight(el) {
   lit.forEach(n => n.classList.remove('on')); lit = [];
@@ -126,7 +128,7 @@ function yGrid(y, ticks, x0, x1, f = fmtN) {
 }
 function weekAxis(x, y0, bw) {
   const n = WEEKS.length, step = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(bw * n / 56))));
-  return WEEKS.map((w, i) => i % step ? '' : `<text x="${x(i) + bw / 2}" y="${y0 + 16}" text-anchor="middle">${short(w)}</text>`).join('');
+  return WEEKS.map((w, i) => i % step ? '' : `<text x="${x(i) + bw / 2}" y="${y0 + 16}" text-anchor="middle">${w.short}</text>`).join('');
 }
 function legendHTML(items) {
   return items.map(it => `<span><i class="${it.kind || ''}" style="${it.kind === 'dash' ? '' : `background:${it.color}`}"></i>${esc(it.label)}</span>`).join('');
@@ -158,15 +160,15 @@ const widthOf = el => Math.max(280, el.querySelector('.plot').clientWidth);
 
 // ------------------------------------------------------------------ header & tiles
 $('#title').textContent = R.repo;
-$('#window').textContent = `${R.since.slice(0, 10)} → ${R.until.slice(0, 10)} · ${WEEKS.length} weeks · ${LOGINS.length} contributors`;
-const weeklyTotal = key => WEEKS.map((_, i) => sum(LOGINS.map(l => DEVS[l].weekly[key][i])));
+$('#window').textContent = `${R.since.slice(0, 10)} → ${R.until.slice(0, 10)} · ${WEEKS.length} ${PKIND}s${PKIND === 'sprint' ? ` of ${R.period.days} days` : ''} · ${LOGINS.length} contributors`;
+const periodTotal = key => WEEKS.map((_, i) => sum(LOGINS.map(l => DEVS[l].series[key][i])));
 function renderTiles() {
   const S = R.repo_summary;
   const tiles = [
-    ['PRs opened', fmtN(S.prs_opened), weeklyTotal('prs_opened')],
-    ['PRs merged', fmtN(S.prs_merged), weeklyTotal('prs_merged')],
-    ['Reviews', fmtN(S.reviews), weeklyTotal('reviews')],
-    ['Commits', fmtN(S.commits), weeklyTotal('commits')],
+    ['PRs opened', fmtN(S.prs_opened), periodTotal('prs_opened')],
+    ['PRs merged', fmtN(S.prs_merged), periodTotal('prs_merged')],
+    ['Reviews', fmtN(S.reviews), periodTotal('reviews')],
+    ['Commits', fmtN(S.commits), periodTotal('commits')],
     ['Median time to merge', fmtH(S.time_to_merge_median)],
     ['Median wait for feedback', fmtH(S.time_to_first_review_median)],
   ];
@@ -174,15 +176,15 @@ function renderTiles() {
     (s ? sparkline(s, 120, 24) : '') + '</div>').join('');
 }
 
-// ------------------------------------------------------------------ stacked weekly by developer
+// ------------------------------------------------------------------ stacked activity by developer
 const STACK_SERIES = [['commits', 'Commits'], ['prs_opened', 'PRs opened'], ['prs_merged', 'PRs merged'], ['reviews', 'Reviews']];
 function renderStacked() {
   const root = $('#c-stacked'), T = tipper(root), key = state.stack;
-  const totals = LOGINS.map(l => [l, sum(DEVS[l].weekly[key])]).filter(([, t]) => t > 0).sort((a, b) => b[1] - a[1]);
+  const totals = LOGINS.map(l => [l, sum(DEVS[l].series[key])]).filter(([, t]) => t > 0).sort((a, b) => b[1] - a[1]);
   const top = totals.slice(0, 7).map(([l]) => l), rest = totals.slice(7).map(([l]) => l);
-  const series = top.map((l, i) => ({ key: l, label: l, color: COLORS[i], vals: DEVS[l].weekly[key] }));
+  const series = top.map((l, i) => ({ key: l, label: l, color: COLORS[i], vals: DEVS[l].series[key] }));
   if (rest.length) series.push({ key: '__other', label: `Other (${rest.length})`, color: 'var(--other)',
-    vals: WEEKS.map((_, i) => sum(rest.map(l => DEVS[l].weekly[key][i]))) });
+    vals: WEEKS.map((_, i) => sum(rest.map(l => DEVS[l].series[key][i]))) });
   root.querySelector('.legend').innerHTML = legendHTML(series);
   const plot = root.querySelector('.plot');
   if (!series.length) { plot.innerHTML = '<div class="empty">No activity of this kind in the window.</div>'; return; }
@@ -203,10 +205,10 @@ function renderStacked() {
     const rows = series.filter(s => s.vals[i] > 0).sort((a, b) => b.vals[i] - a.vals[i])
       .map(s => ({ color: s.color, value: fmtN(s.vals[i]), label: s.label }));
     rows.unshift({ color: 'var(--ink)', value: fmtN(colTotals[i]), label: 'Total' });
-    g += `<rect class="hit" tabindex="0" x="${x(i)}" y="${P.t}" width="${bw}" height="${H - P.t - P.b}" data-tip="${T({ title: `Week of ${w}`, rows })}"/>`;
+    g += `<rect class="hit" tabindex="0" x="${x(i)}" y="${P.t}" width="${bw}" height="${H - P.t - P.b}" data-tip="${T({ title: periodTitle(w), rows })}"/>`;
   });
   g += weekAxis(x, H - P.b, bw);
-  plot.innerHTML = svg(W, H, g, 'Weekly activity by developer');
+  plot.innerHTML = svg(W, H, g, `Activity per ${PKIND} by developer`);
 }
 
 // ------------------------------------------------------------------ histograms
@@ -324,41 +326,68 @@ function renderScatter() {
 }
 
 // ------------------------------------------------------------------ review matrix
+const MATRIX_MODES = {
+  pct: { label: '% of author\'s PRs', sub: 'Share of each author\'s PRs (open during the window) that the reviewer reviewed or commented on' },
+  prs: { label: 'PRs reviewed', sub: 'Distinct PRs of each author that the reviewer reviewed or commented on' },
+  events: { label: 'Reviews & comments', sub: 'Every review and comment each reviewer left on each author\'s PRs' },
+};
+function matrixValue(r, c) {
+  if (r === c) return null;
+  const prs = (DEVS[r].review_prs || {})[c] || 0;
+  if (state.matrix === 'events') return (DEVS[r].interactions || {})[c] || 0;
+  if (state.matrix === 'prs') return prs;
+  const total = DEVS[c].prs_open_in_window || 0;
+  return total ? prs / total : null;
+}
 function renderMatrix() {
-  const root = $('#c-matrix'), T = tipper(root), plot = root.querySelector('.plot');
+  const root = $('#c-matrix'), T = tipper(root), plot = root.querySelector('.plot'), mode = state.matrix;
+  $('#matrix-sub').textContent = MATRIX_MODES[mode].sub;
   const given = l => sum(Object.values(DEVS[l].interactions || {}));
   const received = l => sum(LOGINS.map(o => (DEVS[o].interactions || {})[l] || 0));
   const people = LOGINS.map(l => [l, given(l) + received(l)]).filter(([, t]) => t > 0).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([l]) => l);
   for (const l of [state.a, state.b]) if (l && !people.includes(l) && given(l) + received(l) > 0) people.push(l);
   if (people.length < 2) { plot.innerHTML = '<div class="empty">No cross-developer reviews or comments in this window.</div>'; return; }
-  const W = widthOf(root), n = people.length;
-  const labelW = clamp(Math.max(...people.map(l => textW(l, 11, true))) + 12, 60, W * 0.3);
-  const rowLabel = l => fitLabel(l, labelW - 12, 11, true);
+  const W = widthOf(root), n = people.length, AX = 20;  // AX: gutter for the "Reviewer" axis title
+  const labelW = AX + clamp(Math.max(...people.map(l => textW(l, 11, true))) + 12, 60, W * 0.28);
+  const rowLabel = l => fitLabel(l, labelW - AX - 12, 11, true);
   // Column labels are rotated -50°: height = len·sin50, rightward overhang = len·cos50.
   const colMax = clamp(Math.max(...people.map(l => textW(l, 11, true))), 30, 150);
   const colLabel = l => fitLabel(l, colMax, 11, true);
   const colLen = Math.max(...people.map(l => textW(colLabel(l), 11, true)));
-  const top = colLen * 0.77 + 16, overhang = colLen * 0.64;
+  const top = 22 + colLen * 0.77 + 12, overhang = colLen * 0.64;
   const cell = clamp((W - labelW - overhang - 4) / n, 12, 46);
-  const H = top + n * cell + 4;
-  const max = Math.max(1, ...people.flatMap(r => people.map(c => (DEVS[r].interactions || {})[c] || 0)));
-  let g = '';
+  const footer = mode === 'events' ? 0 : 24, gridH = n * cell, H = top + gridH + footer + 4;
+  const vals = people.flatMap(r => people.map(c => matrixValue(r, c))).filter(v => v != null);
+  const max = mode === 'pct' ? 1 : Math.max(1, ...vals);
+  const show = v => mode === 'pct' ? `${Math.round(v * 100)}%` : fmtN(v);
+  const gridMid = labelW + n * cell / 2;
+  let g = `<text x="${gridMid}" y="12" text-anchor="middle" class="ink2 b">PR author →</text>`;
+  g += `<text transform="translate(12 ${top + gridH / 2}) rotate(-90)" text-anchor="middle" class="ink2 b">Reviewer →</text>`;
   people.forEach((c, j) => {
     const cx = labelW + j * cell + cell / 2, sel = c === state.a || c === state.b;
     g += `<text transform="translate(${cx + 3} ${top - 6}) rotate(-50)" class="${sel ? 'ink b' : ''}">${labelText(c, colLabel(c))}</text>`;
+    if (footer) g += `<text x="${cx}" y="${top + gridH + 16}" text-anchor="middle">${fmtN(DEVS[c].prs_open_in_window || 0)}</text>`;
   });
+  if (footer) g += `<text x="${labelW - 8}" y="${top + gridH + 16}" text-anchor="end" class="ink2">PRs open</text>`;
   people.forEach((r, i) => {
     const yy = top + i * cell, sel = r === state.a || r === state.b;
     g += `<text x="${labelW - 8}" y="${yy + cell / 2 + 4}" text-anchor="end" class="${sel ? 'ink b' : 'ink2'}">${labelText(r, rowLabel(r))}</text>`;
     people.forEach((c, j) => {
-      const v = r === c ? null : (DEVS[r].interactions || {})[c] || 0, xx = labelW + j * cell;
-      const op = v ? 0.16 + 0.84 * Math.sqrt(v / max) : 0;
+      const v = matrixValue(r, c), xx = labelW + j * cell;
+      const op = v ? 0.16 + 0.84 * (mode === 'pct' ? v : Math.sqrt(v / max)) : 0;
       g += `<rect x="${xx + 1}" y="${yy + 1}" width="${cell - 2}" height="${cell - 2}" rx="3" fill="${v ? 'var(--c1)' : 'var(--wash)'}" fill-opacity="${v ? op.toFixed(2) : 1}"/>`;
-      if (v && cell >= 22) g += `<text x="${xx + cell / 2}" y="${yy + cell / 2 + 4}" text-anchor="middle" style="fill:${op > 0.6 ? '#fff' : 'var(--ink)'}">${v}</text>`;
-      if (r !== c) g += `<rect class="hit" x="${xx}" y="${yy}" width="${cell}" height="${cell}" data-tip="${T({ title: `${r} → ${c}`, rows: [{ value: fmtN(v), label: `reviews & comments on ${c}'s PRs` }] })}"/>`;
+      if (v && cell >= (mode === 'pct' ? 30 : 22)) g += `<text x="${xx + cell / 2}" y="${yy + cell / 2 + 4}" text-anchor="middle" style="fill:${op > 0.6 ? '#fff' : 'var(--ink)'};font-size:${mode === 'pct' ? 10 : 11}px">${show(v)}</text>`;
+      if (r === c) return;
+      const prs = (DEVS[r].review_prs || {})[c] || 0, total = DEVS[c].prs_open_in_window || 0;
+      const rows = [
+        { value: total ? `${Math.round(prs / total * 100)}%` : '–', label: `of ${c}'s PRs` },
+        { value: `${fmtN(prs)} of ${fmtN(total)}`, label: 'PRs reviewed or commented on' },
+        { value: fmtN((DEVS[r].interactions || {})[c] || 0), label: 'reviews & comments' },
+      ];
+      g += `<rect class="hit" x="${xx}" y="${yy}" width="${cell}" height="${cell}" data-tip="${T({ title: `${r} reviewing ${c}`, rows })}"/>`;
     });
   });
-  plot.innerHTML = svg(W, H, g, 'Review and comment matrix');
+  plot.innerHTML = svg(W, H, g, 'Who reviews whom');
 }
 
 // ------------------------------------------------------------------ strip plot of cycle times
@@ -395,14 +424,14 @@ function renderStrip() {
 
 // ------------------------------------------------------------------ developer table
 const COLS = ['prs_opened','prs_merged','time_to_merge_median','time_to_first_review_median','pr_size_median',
-  'reviews_given','approvals_given','review_comments_given','review_turnaround_median','commits','active_days'];
+  'prs_kept_current','reviews_given','approvals_given','review_comments_given','review_turnaround_median','commits','active_days'];
 const SHORT = { prs_opened: 'PRs', prs_merged: 'Merged', time_to_merge_median: 'Time to merge', time_to_first_review_median: 'Wait for feedback',
-  pr_size_median: 'PR size', reviews_given: 'Reviews', approvals_given: 'Approvals', review_comments_given: 'Review comments',
+  pr_size_median: 'PR size', prs_kept_current: 'Kept up to date', reviews_given: 'Reviews', approvals_given: 'Approvals', review_comments_given: 'Review comments',
   review_turnaround_median: 'Review turnaround', commits: 'Commits', active_days: 'Active days' };
 let sortKey = null, sortDir = 'desc';
-const activity = l => WEEKS.map((_, i) => ['commits', 'prs_opened', 'reviews'].reduce((a, k) => a + DEVS[l].weekly[k][i], 0));
+const activity = l => WEEKS.map((_, i) => ['commits', 'prs_opened', 'reviews'].reduce((a, k) => a + DEVS[l].series[k][i], 0));
 function renderTable() {
-  $('#devtable thead').innerHTML = '<tr><th data-k="login">Developer</th><th>Weekly activity</th>' +
+  $('#devtable thead').innerHTML = `<tr><th data-k="login">Developer</th><th>Activity per ${PKIND}</th>` +
     COLS.map(k => `<th data-k="${k}" title="${esc(M[k].help)}">${SHORT[k]}</th>`).join('') + '</tr>';
   const q = $('#filter').value.trim().toLowerCase();
   let rows = LOGINS.filter(l => l.toLowerCase().includes(q) || (ghLogin(l) || '').toLowerCase().includes(q));
@@ -479,9 +508,9 @@ const SERIES_SECTION = { commits: 'Commits', prs_opened: 'Authoring', reviews: '
 function renderWeeklyLines(root, key, label) {
   const T = tipper(root), plot = root.querySelector('.plot');
   const act = LOGINS.filter(l => isActive(l, SERIES_SECTION[key]));
-  const avg = WEEKS.map((_, i) => act.length ? sum(act.map(l => DEVS[l].weekly[key][i])) / act.length : 0);
-  const series = [{ label: state.a, color: COLOR_A, vals: DEVS[state.a].weekly[key] }];
-  if (state.b) series.push({ label: state.b, color: COLOR_B, vals: DEVS[state.b].weekly[key] });
+  const avg = WEEKS.map((_, i) => act.length ? sum(act.map(l => DEVS[l].series[key][i])) / act.length : 0);
+  const series = [{ label: state.a, color: COLOR_A, vals: DEVS[state.a].series[key] }];
+  if (state.b) series.push({ label: state.b, color: COLOR_B, vals: DEVS[state.b].series[key] });
   series.push({ label: 'team average', dash: true, vals: avg });
   root.querySelector('.legend').innerHTML = legendHTML(series.map(s => ({ label: s.label, color: s.color, kind: s.dash ? 'dash' : 'line' })));
   const W = widthOf(root), H = 170, P = { l: 34, r: 10, t: 10, b: 24 }, n = WEEKS.length;
@@ -489,7 +518,11 @@ function renderWeeklyLines(root, key, label) {
   const step = n > 1 ? (W - P.l - P.r) / (n - 1) : 0, x = i => P.l + i * step, y = linear(0, max, H - P.b, P.t);
   let g = yGrid(y, [0, max / 2, max], P.l, W - P.r, v => fmtN(Math.round(v * 10) / 10));
   const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor((W - P.l) / 60))));
-  WEEKS.forEach((w, i) => { if (i % every === 0) g += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${short(w)}</text>`; });
+  WEEKS.forEach((w, i) => {
+    if (i % every) return;
+    const anchor = n > 1 && i === 0 ? 'start' : n > 1 && i === n - 1 ? 'end' : 'middle';  // keep edge labels inside the chart
+    g += `<text x="${x(i)}" y="${H - 6}" text-anchor="${anchor}">${w.short}</text>`;
+  });
   [...series].reverse().forEach(s => {
     const pts = s.vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
     g += `<polyline points="${pts}" fill="none" stroke="${s.dash ? 'var(--muted)' : s.color}" stroke-width="2" ${s.dash ? 'stroke-dasharray="4 3"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`;
@@ -497,14 +530,14 @@ function renderWeeklyLines(root, key, label) {
   g += `<g class="xhair" style="display:none"><line y1="${P.t}" y2="${H - P.b}" stroke="var(--axis)"/>` +
     series.filter(s => !s.dash).map((s, j) => `<circle r="4.5" data-j="${j}" fill="${s.color}" stroke="var(--surface)" stroke-width="2"/>`).join('') + '</g>';
   g += `<rect class="overlay" x="${P.l - step / 2}" y="${P.t}" width="${W - P.l - P.r + step}" height="${H - P.t - P.b}" fill="transparent"/>`;
-  plot.innerHTML = svg(W, H, g, `${label} per week`);
+  plot.innerHTML = svg(W, H, g, `${label} per ${PKIND}`);
   const svgEl = plot.querySelector('svg'), xh = svgEl.querySelector('.xhair'), ov = svgEl.querySelector('.overlay');
   ov.addEventListener('pointermove', e => {
     const r = svgEl.getBoundingClientRect(), px = (e.clientX - r.left) * (W / r.width);
     const i = Math.max(0, Math.min(n - 1, Math.round((px - P.l) / (step || 1))));
     xh.style.display = ''; xh.querySelector('line').setAttribute('x1', x(i)); xh.querySelector('line').setAttribute('x2', x(i));
     series.filter(s => !s.dash).forEach((s, j) => { const c = xh.querySelector(`[data-j="${j}"]`); c.setAttribute('cx', x(i)); c.setAttribute('cy', y(s.vals[i])); });
-    tipRender({ title: `Week of ${WEEKS[i]}`, rows: series.map(s => ({ color: s.color, dash: s.dash, value: fmtN(Math.round(s.vals[i] * 10) / 10), label: s.label })) });
+    tipRender({ title: periodTitle(WEEKS[i]), rows: series.map(s => ({ color: s.color, dash: s.dash, value: fmtN(Math.round(s.vals[i] * 10) / 10), label: s.label })) });
     tipMove(e.clientX, e.clientY);
   });
   ov.addEventListener('pointerleave', () => { xh.style.display = 'none'; tipHide(); });
@@ -577,7 +610,7 @@ function renderDetail() {
     </div>
     <div class="grid3">
       ${[['commits', 'Commits'], ['prs_opened', 'PRs opened'], ['reviews', 'Reviews given']].map(([k, l]) =>
-        `<div class="card chart" id="c-w-${k}"><div class="chart-title">${l} per week</div><div class="legend"></div><div class="plot"></div></div>`).join('')}
+        `<div class="card chart" id="c-w-${k}"><div class="chart-title">${l} per ${PKIND}</div><div class="legend"></div><div class="plot"></div></div>`).join('')}
     </div>
     <div class="card chart" id="c-heat"><div class="chart-head"><div><div class="chart-title">When they commit</div>
       <div class="chart-sub">Author's local time · darker = more commits</div></div></div><div class="plot" style="display:flex;gap:24px;flex-wrap:wrap"></div></div>
@@ -615,12 +648,14 @@ function renderAll() {
 
 segmented($('#stack-seg'), STACK_SERIES, state.stack, v => { state.stack = v; renderStacked(); });
 segmented($('#leader-n'), [['15', 'Top 15'], ['0', 'All']], String(state.leaderN), v => { state.leaderN = +v; renderLeader(); });
+segmented($('#matrix-seg'), Object.entries(MATRIX_MODES).map(([k, m]) => [k, m.label]), state.matrix, v => { state.matrix = v; renderMatrix(); });
 segmented($('#strip-seg'), [['hours_to_merge', 'Time to merge'], ['hours_to_first_review', 'Wait for feedback']], state.strip, v => { state.strip = v; renderStrip(); });
 metricOptions($('#leader-metric'), state.leader);
 metricOptions($('#sc-x'), state.sx); metricOptions($('#sc-y'), state.sy);
 $('#leader-metric').addEventListener('change', e => { state.leader = e.target.value; renderLeader(); });
 $('#sc-x').addEventListener('change', e => { state.sx = e.target.value; renderScatter(); });
 $('#sc-y').addEventListener('change', e => { state.sy = e.target.value; renderScatter(); });
+$('#stack-title').textContent = `Activity per ${PKIND} by developer`;
 $('#gloss').innerHTML = R.metrics.map(m => `<dt>${esc(m.label)}</dt><dd>${esc(m.help)}</dd>`).join('');
 
 // Theme toggle: auto -> light -> dark (remembered per browser when storage is available).

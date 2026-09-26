@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from datetime import timedelta
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from .ghdata import (
 )
 from .gitdata import IdentityMap, is_git_repo, load_config, read_commits, remote_matches
 from .metrics import compute
+from .periods import parse_anchor, parse_length, sprints, weekly
 from .names import (
     apply_names, build_name_map, fetch_profile_names, find_developer, looks_like_login, match_by_profile_name,
 )
@@ -27,6 +29,7 @@ EPILOG = """examples:
   gitstat --me                              # your own report (uses your gh login)
   gitstat --repo org/api --path ~/src/api --since 2026-01-01 --format html -o team.html
   gitstat --format csv -o stats.csv         # spreadsheet export
+  gitstat --sprint-start 2026-09-29 --sprint-length 2w --since 6s   # last 6 two-week sprints
 """
 
 
@@ -38,8 +41,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--repo", help="GitHub repo as OWNER/NAME (default: detected from --path)")
     p.add_argument("--path", default=".", help="local clone to read commits from (default: current directory)")
-    p.add_argument("--since", default="90d", help="window start: 30d, 12w, 6m, 1y or YYYY-MM-DD (default: 90d)")
+    p.add_argument("--since", default="90d",
+                   help="window start: 30d, 12w, 6m, 1y, YYYY-MM-DD, or 6s for the last 6 sprints (default: 90d)")
     p.add_argument("--until", default=None, help="window end, same formats (default: now)")
+    p.add_argument("--sprint-start", metavar="DATE",
+                   help="any sprint's start date (past or future), e.g. 2026-09-29; trends are shown per sprint")
+    p.add_argument("--sprint-length", metavar="LEN", help="sprint length, e.g. 2w or 14d")
     p.add_argument("--author", action="append", default=[], metavar="LOGIN",
                    help="show a detailed report for this GitHub login (repeatable)")
     p.add_argument("--me", action="store_true", help="show a detailed report for the authenticated gh user")
@@ -95,12 +102,38 @@ def _resolve_unknown_authors(repo: str, prs: list[dict], commits: list[dict], id
             identity.learn(cm["name"], cm["email"], found[cm["sha"]])
 
 
-def _run(args) -> int:
+def _window(args, config: dict):
+    """Resolve --since/--until and the trend buckets (weeks, or sprints when configured)."""
     until = parse_when(args.until) if args.until else now_utc()
-    since = parse_when(args.since, ref=until)
+    sprint = config.get("sprint") or {}
+    start = args.sprint_start or sprint.get("start")
+    length = args.sprint_length or sprint.get("length")
+    if bool(start) != bool(length):
+        raise GitstatError("sprints need both a start date and a length (--sprint-start and --sprint-length)")
+
+    if not start:
+        if args.since.lower().endswith("s") and args.since[:-1].isdigit():
+            raise GitstatError("--since Ns counts sprints; set --sprint-start and --sprint-length first")
+        since = parse_when(args.since, ref=until)
+        if since >= until:
+            raise GitstatError("--since must be before --until")
+        return since, until, weekly(since, until)
+
+    anchor, days = parse_anchor(start), parse_length(length)
+    current = sprints(anchor, days, until, until).since  # start of the sprint containing `until`
+    if args.since.lower().endswith("s") and args.since[:-1].isdigit():
+        since = current - timedelta(days=days * (int(args.since[:-1]) - 1))
+    else:
+        since = parse_when(args.since, ref=until)
     if since >= until:
         raise GitstatError("--since must be before --until")
+    periods = sprints(anchor, days, since, until)
+    log(f"sprints: {days}-day sprints anchored on {start}; "
+        f"{len(periods)} sprint(s) from {periods.to_json()[0]['label'].split('–')[0]} (current one in progress)")
+    return periods.since, until, periods
 
+
+def _run(args) -> int:
     path = str(Path(args.path).expanduser().resolve())
     local = is_git_repo(path)
     repo = args.repo or detect_repo(path if local else None)
@@ -108,6 +141,7 @@ def _run(args) -> int:
         raise GitstatError("--repo must look like OWNER/NAME")
 
     config = load_config(args.config, path if local else None)
+    since, until, periods = _window(args, config)
     identity = IdentityMap(config.get("aliases"))
     exclude = set(args.exclude) | set(config.get("exclude", []))
 
@@ -123,7 +157,7 @@ def _run(args) -> int:
 
     _resolve_unknown_authors(repo, prs, commits, identity)
     report = compute(prs, commits, since, until, identity,
-                     include_bots=args.include_bots, exclude=exclude)
+                     include_bots=args.include_bots, exclude=exclude, periods=periods)
 
     fetch = args.print_names or (not args.no_names and (args.fetch_names or config.get("fetch_names", False)))
     profile = {}
@@ -138,7 +172,7 @@ def _run(args) -> int:
                 log(f"names: matched commit author '{name}' to @{login} by GitHub profile name")
                 identity.aliases[name.lower()] = login
             report = compute(prs, commits, since, until, identity,
-                             include_bots=args.include_bots, exclude=exclude)
+                             include_bots=args.include_bots, exclude=exclude, periods=periods)
 
     if args.print_names:
         configured = {k.lower(): v for k, v in config.get("names", {}).items()}

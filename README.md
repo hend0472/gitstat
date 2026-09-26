@@ -34,6 +34,9 @@ gitstat --format csv -o team.csv         # one row per developer, every metric
 gitstat --format md --all-details        # Markdown for a wiki or a review doc
 gitstat --format json                    # raw data for your own tooling
 
+# Sprints instead of weeks (any sprint's start date, past or future, plus its length):
+gitstat --sprint-start 2026-09-29 --sprint-length 2w --since 6s    # the last 6 sprints
+
 # Analyse a repo without cd-ing into it (uses the API for commits if no clone):
 gitstat --repo org/api --since 2026-01-01 --until 2026-04-01
 ```
@@ -45,6 +48,8 @@ The first run pages through every PR updated in the window, which takes about 1 
 Every metric is computed per developer for the chosen window. Time metrics use wall-clock time.
 
 **Authoring**: PRs opened, merged, closed unmerged and still open. Merge rate, PRs per week, and time between PRs. PR size in lines and files, and commits per PR. Wait for first feedback, time to merge (median and p90), and how often PRs needed changes. Comments received per PR. **Feedback → next commit** is how long after a reviewer's comment the author pushes a change. **Feedback → reply** is how long until they answer. Also counts PRs merged without approval and self-merged PRs.
+
+**Keeping PRs up to date**: **base branch merges** count merges of the target branch (e.g. `develop` or `main`) into a PR branch, including GitHub's "Update branch" button. **Force pushes** usually mean a rebase onto the latest target branch. **PRs kept up to date** counts the distinct PRs someone updated either way. These merges aren't counted as commits or as responses to review feedback.
 
 **Reviewing**: reviews given, approvals, changes requested, inline and conversation comments. PRs and teammates reviewed. PRs merged for others. Review requests received, the share answered, and **review turnaround** (from the review request to the submitted review, median and p90).
 
@@ -71,6 +76,26 @@ A single file with no external dependencies. Open it in any browser or attach it
   - full metric tables
 
 Every chart has hover tooltips. Clicking a developer in any chart or the table opens their detail.
+
+### Sprints
+
+By default, trends are grouped by calendar week. To group them by sprint, give any sprint's start date and the sprint length. The sprint calendar is worked out forwards and backwards from that date, so a date in the future works too. Every "per week" chart and sparkline then becomes "per sprint", and the window is aligned to sprint boundaries. `--since 6s` means "the last 6 sprints", including the one in progress. To avoid passing the flags every time, set them in `.gitstat.json`:
+
+```json
+{ "sprint": { "start": "2026-09-29", "length": "2w" } }
+```
+
+Sprints start at local midnight on the start date.
+
+### Who reviews whom
+
+Rows are reviewers and columns are PR authors. The matrix has three modes:
+
+- **% of author's PRs** (the default): the share of each author's PRs, open during the window, that the reviewer reviewed or commented on. The shading uses a fixed 0–100% scale, so reviewing 4 of 5 PRs looks the same as 80% of anyone else's.
+- **PRs reviewed**: a distinct count of those PRs.
+- **Reviews & comments**: every review and comment.
+
+A footer row shows how many PRs each author had open.
 
 ### Team comparisons
 
@@ -102,6 +127,7 @@ Commit authors are matched to GitHub logins automatically. The tool uses emails 
     "b654321": "Bob Roe"
   },
   "fetch_names": true,
+  "sprint": { "start": "2026-09-29", "length": "2w" },
   "aliases": {
     "vyapak@personal-laptop.local": "vyapakgoyal",
     "Jane Doe": "janedoe"

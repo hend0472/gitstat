@@ -30,11 +30,11 @@ __CSS__
 
   <section id="trends">
     <h2>Team trends</h2>
-    <p class="lede">How work flows week to week, and how long PRs take to move.</p>
+    <p class="lede">How work flows over time, and how long PRs take to move.</p>
     <div class="stack">
       <div class="card chart" id="c-stacked">
         <div class="chart-head">
-          <div><div class="chart-title">Weekly activity by developer</div>
+          <div><div class="chart-title" id="stack-title">Activity by developer</div>
             <div class="chart-sub">Top 7 contributors for the selected activity; everyone else is grouped as Other</div></div>
           <div class="controls"><div class="seg" id="stack-seg" role="group" aria-label="Activity"></div></div>
         </div>
@@ -82,7 +82,8 @@ __CSS__
         </div>
         <div class="card chart" id="c-matrix">
           <div class="chart-head"><div><div class="chart-title">Who reviews whom</div>
-            <div class="chart-sub">Reviews and comments each person (row) left on another's PRs (column)</div></div></div>
+            <div class="chart-sub" id="matrix-sub"></div></div>
+            <div class="controls"><div class="seg" id="matrix-seg" role="group" aria-label="Matrix measure"></div></div></div>
           <div class="plot"></div>
         </div>
       </div>

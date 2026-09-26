@@ -73,14 +73,6 @@ def week_start(dt: datetime) -> datetime:
     return d - timedelta(days=d.weekday())
 
 
-def week_keys(since: datetime, until: datetime) -> list[str]:
-    keys, cur = [], week_start(since)
-    while cur <= until:
-        keys.append(cur.date().isoformat())
-        cur += timedelta(days=7)
-    return keys
-
-
 # ---------------------------------------------------------------- stats
 
 def median(xs):

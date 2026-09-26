@@ -22,11 +22,19 @@ OVERVIEW = [
     ("reviews_given", "Reviews"),
     ("approvals_given", "Approve"),
     ("changes_requested_given", "ReqChg"),
+    ("prs_kept_current", "Updated"),
     ("review_comments_given", "Comments"),
     ("review_turnaround_median", "Rev TAT"),
     ("commits", "Commits"),
     ("active_days", "Days"),
 ]
+
+
+def _span(report: dict) -> str:
+    n, p = len(report["periods"]), report["period"]
+    if p["kind"] == "sprint":
+        return f"{n} sprint{'s' if n != 1 else ''} of {p['days']} days"
+    return f"{n} week{'s' if n != 1 else ''}"
 
 
 def fmt(key: str, value) -> str:
@@ -87,7 +95,7 @@ def render_text(report: dict, repo: str, detail: list[str] | None, color: bool |
     st = _Style(color)
     out = []
     s = report["repo_summary"]
-    out.append(st.bold(f"gitstat · {repo}") + st.dim(f"   {report['since'][:10]} → {report['until'][:10]}  ({len(report['weeks'])} weeks)"))
+    out.append(st.bold(f"gitstat · {repo}") + st.dim(f"   {report['since'][:10]} → {report['until'][:10]}  ({_span(report)})"))
     out.append(
         f"{s['contributors']} contributors · {s['prs_opened']} PRs opened · {s['prs_merged']} merged · "
         f"{s['reviews']} reviews · {s['commits']} commits · median time to merge {fmt_hours(s['time_to_merge_median'])} · "
@@ -96,16 +104,16 @@ def render_text(report: dict, repo: str, detail: list[str] | None, color: bool |
     out.append("")
 
     devs = report["developers"]
-    headers = ["Developer"] + [h for _, h in OVERVIEW] + ["Weekly activity"]
+    headers = ["Developer"] + [h for _, h in OVERVIEW] + [f"Activity per {report['period']['kind']}"]
     rows = []
     for login, d in devs.items():
-        weekly = [a + b + c for a, b, c in zip(d["weekly"]["commits"], d["weekly"]["prs_opened"], d["weekly"]["reviews"])]
-        rows.append([login] + [fmt(k, d["metrics"][k]) for k, _ in OVERVIEW] + [sparkline(weekly)])
+        per = [a + b + c for a, b, c in zip(d["series"]["commits"], d["series"]["prs_opened"], d["series"]["reviews"])]
+        rows.append([login] + [fmt(k, d["metrics"][k]) for k, _ in OVERVIEW] + [sparkline(per)])
     team = report["team"]["median"]
     rows.append([st.dim("team median")] + [fmt(k, team[k]) for k, _ in OVERVIEW] + [""])
     out.append(st.bold("Team overview"))
     out.extend(_table(headers, rows))
-    out.append(st.dim("TTM = median time to merge · 1st fb = median wait for first review/comment · Rev TAT = median review turnaround after being requested"))
+    out.append(st.dim("TTM = median time to merge · 1st fb = median wait for first review/comment · Updated = PRs brought up to date from the target branch · Rev TAT = median review turnaround after being requested"))
 
     for login in detail or []:
         if login not in devs:
@@ -120,7 +128,7 @@ def render_text(report: dict, repo: str, detail: list[str] | None, color: bool |
 def _render_dev(d: dict, report: dict, st: _Style) -> list[str]:
     team = report["team"]["median"]
     out = [st.bold(st.cyan(f"━━ {_who(d)} ━━"))]
-    w = d["weekly"]
+    w = d["series"]
     for name, key in (("Commits", "commits"), ("PRs opened", "prs_opened"), ("Reviews", "reviews")):
         out.append(f"  {name:<11} {sparkline(w[key])}  {st.dim('total ' + str(sum(w[key])))}")
     out.append("")
@@ -159,7 +167,7 @@ def render_markdown(report: dict, repo: str, detail: list[str] | None) -> str:
     s = report["repo_summary"]
     team = report["team"]["median"]
     out = [f"# Contribution report: {repo}", "",
-           f"_{report['since'][:10]} → {report['until'][:10]} · {len(report['weeks'])} weeks_", "",
+           f"_{report['since'][:10]} → {report['until'][:10]} · {_span(report)}_", "",
            f"- **Contributors:** {s['contributors']}",
            f"- **PRs opened / merged:** {s['prs_opened']} / {s['prs_merged']}",
            f"- **Reviews:** {s['reviews']}",
