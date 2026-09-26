@@ -119,7 +119,7 @@ def render_text(report: dict, repo: str, detail: list[str] | None, color: bool |
 
 def _render_dev(d: dict, report: dict, st: _Style) -> list[str]:
     team = report["team"]["median"]
-    out = [st.bold(st.cyan(f"━━ {d['login']} ━━"))]
+    out = [st.bold(st.cyan(f"━━ {_who(d)} ━━"))]
     w = d["weekly"]
     for name, key in (("Commits", "commits"), ("PRs opened", "prs_opened"), ("Reviews", "reviews")):
         out.append(f"  {name:<11} {sparkline(w[key])}  {st.dim('total ' + str(sum(w[key])))}")
@@ -149,6 +149,12 @@ def _render_dev(d: dict, report: dict, st: _Style) -> list[str]:
     return out
 
 
+def _who(d: dict) -> str:
+    """'Jane Doe (@a123456)' when a display name is in use, otherwise just the login."""
+    gh = d.get("github_login")
+    return f"{d['login']} (@{gh})" if gh and gh != d["login"] else d["login"]
+
+
 def render_markdown(report: dict, repo: str, detail: list[str] | None) -> str:
     s = report["repo_summary"]
     team = report["team"]["median"]
@@ -172,7 +178,7 @@ def render_markdown(report: dict, repo: str, detail: list[str] | None) -> str:
         d = report["developers"].get(login)
         if not d:
             continue
-        out += ["", f"## {login}", ""]
+        out += ["", f"## {_who(d)}", ""]
         for section in ("Authoring", "Reviewing", "Commits"):
             out += [f"### {section}", "", "| Metric | Value | Team median | Rank |", "|---|---:|---:|---:|"]
             for m in (m for m in METRICS if m.section == section):
@@ -189,9 +195,9 @@ def render_markdown(report: dict, repo: str, detail: list[str] | None) -> str:
 def render_csv(report: dict) -> str:
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["login"] + [m.key for m in METRICS])
+    writer.writerow(["name", "github_login"] + [m.key for m in METRICS])
     for login, d in report["developers"].items():
-        writer.writerow([login] + ["" if d["metrics"][m.key] is None else round(d["metrics"][m.key], 3)
+        writer.writerow([login, d.get("github_login", login)] + ["" if d["metrics"][m.key] is None else round(d["metrics"][m.key], 3)
                                    for m in METRICS])
     return buf.getvalue()
 

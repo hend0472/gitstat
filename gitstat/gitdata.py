@@ -109,7 +109,13 @@ class IdentityMap:
 
 
 def load_config(path: str | None) -> dict:
-    """Load .gitstat.json: {"aliases": {"email-or-name": "login"}, "exclude": ["login", ...]}."""
+    """Load .gitstat.json.
+
+    {"aliases": {"email-or-name": "login"},   # merge commit identities into a login
+     "names": {"login": "Display Name"},      # how people are shown in reports
+     "fetch_names": false,                    # fill missing names from GitHub profiles
+     "exclude": ["login", ...]}
+    """
     candidates = [Path(path)] if path else [Path(".gitstat.json"), Path.home() / ".gitstat.json"]
     for p in candidates:
         if p.exists():

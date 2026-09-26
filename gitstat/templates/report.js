@@ -379,13 +379,13 @@ function renderTable() {
   $('#devtable thead').innerHTML = '<tr><th data-k="login">Developer</th><th>Weekly activity</th>' +
     COLS.map(k => `<th data-k="${k}" title="${esc(M[k].help)}">${SHORT[k]}</th>`).join('') + '</tr>';
   const q = $('#filter').value.trim().toLowerCase();
-  let rows = LOGINS.filter(l => l.toLowerCase().includes(q));
+  let rows = LOGINS.filter(l => l.toLowerCase().includes(q) || (ghLogin(l) || '').toLowerCase().includes(q));
   if (sortKey) rows.sort((a, b) => {
     const va = sortKey === 'login' ? a.toLowerCase() : DEVS[a].metrics[sortKey], vb = sortKey === 'login' ? b.toLowerCase() : DEVS[b].metrics[sortKey];
     if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
     return (va < vb ? -1 : va > vb ? 1 : 0) * (sortDir === 'asc' ? 1 : -1);
   });
-  $('#devtable tbody').innerHTML = rows.map(l => `<tr data-login="${esc(l)}" class="${l === state.a ? 'sel-a' : l === state.b ? 'sel-b' : ''}"><td>${esc(l)}</td>` +
+  $('#devtable tbody').innerHTML = rows.map(l => `<tr data-login="${esc(l)}" class="${l === state.a ? 'sel-a' : l === state.b ? 'sel-b' : ''}"><td title="${ghLogin(l) ? '@' + esc(ghLogin(l)) : ''}">${esc(l)}</td>` +
     `<td>${sparkline(activity(l), 90, 20, l === state.b ? COLOR_B : COLOR_A)}</td>` +
     COLS.map(k => `<td>${fmt(k, DEVS[l].metrics[k])}</td>`).join('') + '</tr>').join('') +
     `<tr class="team"><td>team median</td><td></td>${COLS.map(k => `<td>${fmt(k, TEAM[k])}</td>`).join('')}</tr>`;
@@ -537,9 +537,9 @@ function renderDetail() {
     `<td>${p.state.toLowerCase()}</td><td>${fmtN(p.size)}</td><td>${fmtH(p.hours_to_first_review)}</td><td>${fmtH(p.hours_to_merge)}</td></tr>`).join('');
   body.innerHTML = `
     <div class="dev-bar">
-      <span class="who"><i style="background:${COLOR_A}"></i>${esc(A)}</span>
+      <span class="who"><i style="background:${COLOR_A}"></i>${esc(A)}${ghLogin(A) ? ` <span class="stats">@${esc(ghLogin(A))}</span>` : ''}</span>
       <span class="stats">${fmtN(m.prs_opened)} PRs · ${fmtN(m.reviews_given)} reviews · ${fmtN(m.commits)} commits · ${fmtN(m.active_days)} active days</span>
-      ${B ? `<span class="who b"><i style="background:${COLOR_B}"></i>${esc(B)}</span>
+      ${B ? `<span class="who b"><i style="background:${COLOR_B}"></i>${esc(B)}${ghLogin(B) ? ` <span class="stats">@${esc(ghLogin(B))}</span>` : ''}</span>
       <span class="stats">${fmtN(DEVS[B].metrics.prs_opened)} PRs · ${fmtN(DEVS[B].metrics.reviews_given)} reviews · ${fmtN(DEVS[B].metrics.commits)} commits</span>` : ''}
     </div>
     <div class="${B ? 'grid2' : ''}">${insights(A, COLOR_A)}${B ? insights(B, COLOR_B) : ''}</div>
@@ -567,8 +567,9 @@ function renderDetail() {
 }
 
 // ------------------------------------------------------------------ selection & wiring
+const ghLogin = l => DEVS[l].github_login && DEVS[l].github_login !== l ? DEVS[l].github_login : null;
 function pickers() {
-  const opts = LOGINS.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('');
+  const opts = LOGINS.map(l => `<option value="${esc(l)}">${esc(l)}${ghLogin(l) ? ` (@${esc(ghLogin(l))})` : ''}</option>`).join('');
   $('#pick-a').innerHTML = opts; $('#pick-b').innerHTML = '<option value="">— nobody —</option>' + opts;
   $('#pick-a').value = state.a; $('#pick-b').value = state.b || '';
 }

@@ -76,12 +76,32 @@ Every chart has hover tooltips. Clicking a developer in any chart or the table o
 
 Team medians and ranks only include developers who were active in the same area. Authoring metrics are compared among PR authors, review metrics among reviewers, and commit metrics among committers. This stops drive-by contributors from pulling every median to zero.
 
+## Showing names instead of logins
+
+If logins are SSO numbers or handles nobody recognises, give people display names. Names only change how people are shown. Which commits and PRs belong to whom is unchanged, and the login stays visible next to the name (e.g. "Jane Doe (@a123456)").
+
+```sh
+gitstat --print-names > names.json   # a "names" block for everyone in the window, pre-filled from GitHub profiles
+gitstat --fetch-names                # use GitHub profile names for anyone not listed in the config
+gitstat --no-names                   # show raw logins
+gitstat --author "Jane Doe"          # --author accepts a login or a display name
+```
+
+Paste the `names` block into `.gitstat.json` and edit it. Names from the config always win over GitHub profile names. Set `"fetch_names": true` in the config to always fill in the rest from profiles. Profile names are cached for a week.
+
+When profile names are fetched, commits whose author name matches exactly one GitHub profile name are credited to that account, and each match is logged. Commit authors that still aren't linked to a login are listed by `--print-names`. Map those under `aliases`.
+
 ## Configuration
 
 Commit authors are matched to GitHub logins automatically. The tool uses emails GitHub has linked to PR commits, `@users.noreply.github.com` addresses, and a GitHub lookup for any remaining unknown emails. If someone still shows up under their name instead of their login, add an alias in `.gitstat.json` (in the working directory or `~`). You can also exclude accounts:
 
 ```json
 {
+  "names": {
+    "a123456": "Jane Doe",
+    "b654321": "Bob Roe"
+  },
+  "fetch_names": true,
   "aliases": {
     "vyapak@personal-laptop.local": "vyapakgoyal",
     "Jane Doe": "janedoe"

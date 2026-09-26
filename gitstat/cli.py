@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
 
 from . import __version__
-from .common import GitstatError, log, now_utc, parse_when
+from .common import GitstatError, log, now_utc, parse_when, run
 from .ghdata import (
     detect_repo, fetch_default_branch_commits, fetch_pull_requests, lookup_commit_logins,
 )
 from .gitdata import IdentityMap, is_git_repo, load_config, read_commits, remote_matches
 from .metrics import compute
+from .names import (
+    apply_names, build_name_map, fetch_profile_names, find_developer, looks_like_login, match_by_profile_name,
+)
 from .render_html import render_html
 from .render_text import render_csv, render_json, render_markdown, render_text
 
@@ -47,6 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--all-branches", action="store_true", help="count local commits on all branches")
     p.add_argument("--api-commits", action="store_true",
                    help="read default-branch commits through the GitHub API even when a clone is present")
+    p.add_argument("--fetch-names", action="store_true",
+                   help="show GitHub profile names for people not listed under \"names\" in the config")
+    p.add_argument("--no-names", action="store_true", help="show raw GitHub logins instead of display names")
+    p.add_argument("--print-names", action="store_true",
+                   help="print a \"names\" config block for everyone in the window, then exit")
     p.add_argument("--include-bots", action="store_true", help="include bot accounts")
     p.add_argument("--exclude", action="append", default=[], metavar="LOGIN", help="ignore this login (repeatable)")
     p.add_argument("--config", help="path to a .gitstat.json config with aliases/excludes")
@@ -116,14 +125,45 @@ def _run(args) -> int:
     report = compute(prs, commits, since, until, identity,
                      include_bots=args.include_bots, exclude=exclude)
 
-    if args.top:
-        keep = set(list(report["developers"])[:args.top]) | set(args.author)
-        report["developers"] = {k: v for k, v in report["developers"].items() if k in keep}
+    fetch = args.print_names or (not args.no_names and (args.fetch_names or config.get("fetch_names", False)))
+    profile = {}
+    if fetch:
+        logins = [l for l in report["developers"] if looks_like_login(l)]
+        profile = fetch_profile_names(logins, use_cache=not args.no_cache)
+        # Commits whose author name matches exactly one GitHub profile name belong to that account.
+        unmatched = [k for k in report["developers"] if not looks_like_login(k)]
+        matches = match_by_profile_name(unmatched, profile)
+        if matches:
+            for name, login in matches.items():
+                log(f"names: matched commit author '{name}' to @{login} by GitHub profile name")
+                identity.aliases[name.lower()] = login
+            report = compute(prs, commits, since, until, identity,
+                             include_bots=args.include_bots, exclude=exclude)
 
-    detail = list(args.author)
+    if args.print_names:
+        configured = {k.lower(): v for k, v in config.get("names", {}).items()}
+        names = {l: configured.get(l.lower()) or profile.get(l) or ""
+                 for l in report["developers"] if looks_like_login(l)}
+        sys.stdout.write(json.dumps({"names": names}, indent=2, ensure_ascii=False) + "\n")
+        leftovers = [k for k in report["developers"] if not looks_like_login(k)]
+        log("fill in the blanks and add this block to .gitstat.json")
+        if leftovers:
+            log("these commit authors aren't linked to a GitHub login; map them under \"aliases\": " + ", ".join(leftovers))
+        return 0
+    if not args.no_names:
+        apply_names(report, build_name_map(list(report["developers"]), config.get("names", {}), profile))
+
+    wanted = list(args.author)
     if args.me:
-        from .common import run
-        detail.append(run(["gh", "api", "user", "-q", ".login"]).strip())
+        wanted.append(run(["gh", "api", "user", "-q", ".login"]).strip())
+    detail = []
+    for query in wanted:
+        key = find_developer(report, query)
+        detail.append(key or query)  # renderers report "no activity" for unknown names
+
+    if args.top:
+        keep = set(list(report["developers"])[:args.top]) | set(detail)
+        report["developers"] = {k: v for k, v in report["developers"].items() if k in keep}
     if args.all_details:
         detail = list(report["developers"])
 
