@@ -131,7 +131,7 @@ function weekAxis(x, y0, bw) {
   return WEEKS.map((w, i) => i % step ? '' : `<text x="${x(i) + bw / 2}" y="${y0 + 16}" text-anchor="middle">${w.short}</text>`).join('');
 }
 function legendHTML(items) {
-  return items.map(it => `<span><i class="${it.kind || ''}" style="${it.kind === 'dash' ? '' : `background:${it.color}`}"></i>${esc(it.label)}</span>`).join('');
+  return items.map(it => `<span${it.dim ? ' style="opacity:.4" title="No activity in this view"' : ''}><i class="${it.kind || ''}" style="${it.kind === 'dash' ? '' : `background:${it.color}`}"></i>${esc(it.label)}</span>`).join('');
 }
 const roundTop = (x, y, w, h, r) => {
   r = Math.min(r, w / 2, h); if (h <= 0) return '';
@@ -178,16 +178,28 @@ function renderTiles() {
 
 // ------------------------------------------------------------------ stacked activity by developer
 const STACK_SERIES = [['commits', 'Commits'], ['prs_opened', 'PRs opened'], ['prs_merged', 'PRs merged'], ['reviews', 'Reviews']];
+// The 7 most active people overall get a fixed color for the whole page, so switching
+// between commits / PRs / reviews never repaints anyone. Activity is each person's share
+// of the team total per series, summed, so high-volume commits don't drown out reviews.
+const FEATURED = (() => {
+  const keys = STACK_SERIES.map(([k]) => k);
+  const teamTotal = Object.fromEntries(keys.map(k => [k, sum(LOGINS.map(l => sum(DEVS[l].series[k]))) || 1]));
+  return LOGINS.map(l => [l, sum(keys.map(k => sum(DEVS[l].series[k]) / teamTotal[k]))])
+    .filter(([, score]) => score > 0).sort((a, b) => b[1] - a[1]).slice(0, 7).map(([l]) => l);
+})();
+const DEV_COLOR = Object.fromEntries(FEATURED.map((l, i) => [l, COLORS[i]]));
+
 function renderStacked() {
   const root = $('#c-stacked'), T = tipper(root), key = state.stack;
-  const totals = LOGINS.map(l => [l, sum(DEVS[l].series[key])]).filter(([, t]) => t > 0).sort((a, b) => b[1] - a[1]);
-  const top = totals.slice(0, 7).map(([l]) => l), rest = totals.slice(7).map(([l]) => l);
-  const series = top.map((l, i) => ({ key: l, label: l, color: COLORS[i], vals: DEVS[l].series[key] }));
+  const rest = LOGINS.filter(l => !DEV_COLOR[l] && sum(DEVS[l].series[key]) > 0);
+  const series = FEATURED.map(l => ({ key: l, label: l, color: DEV_COLOR[l], vals: DEVS[l].series[key] }));
   if (rest.length) series.push({ key: '__other', label: `Other (${rest.length})`, color: 'var(--other)',
     vals: WEEKS.map((_, i) => sum(rest.map(l => DEVS[l].series[key][i]))) });
-  root.querySelector('.legend').innerHTML = legendHTML(series);
+  // Everyone keeps their legend slot; people with nothing in this view are dimmed rather than removed.
+  root.querySelector('.legend').innerHTML = legendHTML(series.map(s => ({ ...s, dim: !sum(s.vals) })));
+  renderPies(root, series, key, T);
   const plot = root.querySelector('.plot');
-  if (!series.length) { plot.innerHTML = '<div class="empty">No activity of this kind in the window.</div>'; return; }
+  if (!series.some(s => sum(s.vals) > 0)) { plot.innerHTML = '<div class="empty">No activity of this kind in the window.</div>'; return; }
   const W = widthOf(root), H = 260, P = { l: 40, r: 8, t: 10, b: 26 };
   const colTotals = WEEKS.map((_, i) => sum(series.map(s => s.vals[i])));
   const max = niceMax(Math.max(...colTotals)), n = WEEKS.length;
@@ -209,6 +221,51 @@ function renderStacked() {
   });
   g += weekAxis(x, H - P.b, bw);
   plot.innerHTML = svg(W, H, g, `Activity per ${PKIND} by developer`);
+}
+
+// ------------------------------------------------------------------ share per period (donuts)
+// Same people, colors and toggle as the stacked bars; hovering a slice highlights that
+// person in every donut and in the bars, because they share one chart root.
+const UNIT = { commits: ['commit', 'commits'], prs_opened: ['PR opened', 'PRs opened'], prs_merged: ['PR merged', 'PRs merged'], reviews: ['review', 'reviews'] };
+function arcPath(cx, cy, r0, r1, a0, a1) {
+  const p = (r, a) => `${(cx + r * Math.sin(a)).toFixed(2)},${(cy - r * Math.cos(a)).toFixed(2)}`;
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  return `M${p(r1, a0)} A${r1},${r1} 0 ${large} 1 ${p(r1, a1)} L${p(r0, a1)} A${r0},${r0} 0 ${large} 0 ${p(r0, a0)} Z`;
+}
+function renderPies(root, series, key, T) {
+  const label = STACK_SERIES.find(([k]) => k === key)[1].toLowerCase();
+  root.querySelector('.pies-title').textContent = `Share of ${label} per ${PKIND}`;
+  const [one, many] = UNIT[key];
+  const S = 140, cx = S / 2, cy = S / 2, r1 = 62, r0 = 40;
+  root.querySelector('.pies').innerHTML = WEEKS.map((w, i) => {
+    const slices = series.map(s => ({ ...s, v: s.vals[i] })).filter(s => s.v > 0);
+    const total = sum(slices.map(s => s.v));
+    let g = '';
+    if (!total) {
+      g += `<circle cx="${cx}" cy="${cy}" r="${(r0 + r1) / 2}" fill="none" stroke="var(--wash)" stroke-width="${r1 - r0}"/>`;
+    } else if (slices.length === 1) {
+      const s0 = slices[0];
+      g += `<circle class="mark dimmable" data-key="${esc(s0.key)}" cx="${cx}" cy="${cy}" r="${(r0 + r1) / 2}" fill="none" stroke="${s0.color}" stroke-width="${r1 - r0}"
+        data-tip="${T({ title: periodTitle(w), rows: [{ color: s0.color, value: '100%', label: `${s0.label} · ${fmtN(s0.v)} ${s0.v === 1 ? one : many}` }] })}"/>`;
+    } else {
+      let a = 0;
+      slices.forEach(s => {
+        const a1 = a + (s.v / total) * Math.PI * 2;
+        const pct = Math.round(s.v / total * 100);
+        g += `<path class="mark dimmable" data-key="${esc(s.key)}" d="${arcPath(cx, cy, r0, r1, a, a1)}" fill="${s.color}" stroke="var(--surface)" stroke-width="2" stroke-linejoin="round"
+          data-tip="${T({ title: periodTitle(w), rows: [{ color: s.color, value: `${pct}%`, label: `${s.label} · ${fmtN(s.v)} ${s.v === 1 ? one : many}` }] })}"/>`;
+        a = a1;
+      });
+    }
+    g += `<text x="${cx}" y="${cy + 2}" text-anchor="middle" class="ink b" style="font-size:18px">${fmtN(total)}</text>`;
+    g += `<text x="${cx}" y="${cy + 18}" text-anchor="middle">${total === 1 ? one : many}</text>`;
+    const top = slices.slice().sort((p, q) => q.v - p.v)[0];
+    const lead = !total ? 'No activity'
+      : top.key === '__other' ? `Mostly others · ${Math.round(top.v / total * 100)}%`
+      : `Top: ${esc(fitLabel(top.label, 118))} · ${Math.round(top.v / total * 100)}%`;
+    return `<figure class="pie${w.in_progress ? ' live' : ''}">${svg(S, S, g, `${periodTitle(w)}: share of ${label}`)}
+      <figcaption><b>${esc(PKIND === 'sprint' ? w.label : 'Week of ' + w.short)}</b><br><span class="muted">${w.in_progress ? 'In progress · ' : ''}${lead}</span></figcaption></figure>`;
+  }).join('');
 }
 
 // ------------------------------------------------------------------ histograms

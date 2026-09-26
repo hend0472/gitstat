@@ -61,7 +61,12 @@ Each detailed report also includes weekly activity sparklines or charts, a heatm
 
 A single file with no external dependencies. Open it in any browser or attach it to an email. It follows the system light/dark setting and has a theme toggle.
 
-- **Team trends:** weekly activity stacked by developer (commits, PRs opened, PRs merged or reviews), plus histograms of time to merge and wait for first feedback.
+- **Team trends:**
+  - activity per week or sprint, stacked by developer (commits, PRs opened, PRs merged or reviews)
+  - a donut per week or sprint showing how that period's activity splits between people
+  - histograms of time to merge and wait for first feedback
+
+  The 7 most active people keep the same color in every view, and hovering a person highlights them across the bars and every donut.
 - **Compare developers:**
   - a ranked bar chart for any metric, with the team median marked
   - a scatter plot with selectable axes (e.g. volume vs. speed); skewed axes switch to a log scale
