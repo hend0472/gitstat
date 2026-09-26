@@ -101,10 +101,10 @@ svg text.b { font-weight: 600; }
 
 /* ---------- per-period donuts */
 .pies-head { margin: 22px 0 10px; padding-top: 16px; border-top: 1px solid var(--grid); }
-.pies { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 12px; }
-.pie { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px 8px; border-radius: 10px; }
+.pies { display: grid; gap: 0; }  /* columns and side padding are set in JS to match the bar chart */
+.pie { margin: 0 2px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 2px 8px; border-radius: 10px; }
 .pie.live { background: var(--wash); }
-.pie figcaption { font-size: 12px; text-align: center; line-height: 1.35; color: var(--ink); }
+.pie figcaption { font-size: 12px; text-align: center; line-height: 1.35; color: var(--ink); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pie svg { overflow: visible; }
 
 /* ---------- tooltip */

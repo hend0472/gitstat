@@ -200,7 +200,7 @@ function renderStacked() {
   renderPies(root, series, key, T);
   const plot = root.querySelector('.plot');
   if (!series.some(s => sum(s.vals) > 0)) { plot.innerHTML = '<div class="empty">No activity of this kind in the window.</div>'; return; }
-  const W = widthOf(root), H = 260, P = { l: 40, r: 8, t: 10, b: 26 };
+  const W = widthOf(root), H = 260, P = { ...STACK_PAD, t: 10, b: 26 };
   const colTotals = WEEKS.map((_, i) => sum(series.map(s => s.vals[i])));
   const max = niceMax(Math.max(...colTotals)), n = WEEKS.length;
   const bw = (W - P.l - P.r) / n, x = i => P.l + i * bw, y = linear(0, max, H - P.b, P.t);
@@ -226,6 +226,7 @@ function renderStacked() {
 // ------------------------------------------------------------------ share per period (donuts)
 // Same people, colors and toggle as the stacked bars; hovering a slice highlights that
 // person in every donut and in the bars, because they share one chart root.
+const STACK_PAD = { l: 40, r: 8 };  // shared so each donut sits under its own bar
 const UNIT = { commits: ['commit', 'commits'], prs_opened: ['PR opened', 'PRs opened'], prs_merged: ['PR merged', 'PRs merged'], reviews: ['review', 'reviews'] };
 function arcPath(cx, cy, r0, r1, a0, a1) {
   const p = (r, a) => `${(cx + r * Math.sin(a)).toFixed(2)},${(cy - r * Math.cos(a)).toFixed(2)}`;
@@ -236,8 +237,15 @@ function renderPies(root, series, key, T) {
   const label = STACK_SERIES.find(([k]) => k === key)[1].toLowerCase();
   root.querySelector('.pies-title').textContent = `Share of ${label} per ${PKIND}`;
   const [one, many] = UNIT[key];
-  const S = 140, cx = S / 2, cy = S / 2, r1 = 62, r0 = 40;
-  root.querySelector('.pies').innerHTML = WEEKS.map((w, i) => {
+  // Same columns as the bars above: identical left/right padding and one equal column per period.
+  const box = root.querySelector('.pies'), n = WEEKS.length;
+  const W = widthOf(root), bw = (W - STACK_PAD.l - STACK_PAD.r) / n;
+  box.style.paddingLeft = STACK_PAD.l + 'px';
+  box.style.paddingRight = STACK_PAD.r + 'px';
+  box.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
+  const S = Math.round(clamp(bw - 10, 40, 140)), cx = S / 2, cy = S / 2;
+  const r1 = S / 2 - 3, r0 = r1 * 0.64, big = S >= 96;
+  box.innerHTML = WEEKS.map((w, i) => {
     const slices = series.map(s => ({ ...s, v: s.vals[i] })).filter(s => s.v > 0);
     const total = sum(slices.map(s => s.v));
     let g = '';
@@ -252,19 +260,25 @@ function renderPies(root, series, key, T) {
       slices.forEach(s => {
         const a1 = a + (s.v / total) * Math.PI * 2;
         const pct = Math.round(s.v / total * 100);
-        g += `<path class="mark dimmable" data-key="${esc(s.key)}" d="${arcPath(cx, cy, r0, r1, a, a1)}" fill="${s.color}" stroke="var(--surface)" stroke-width="2" stroke-linejoin="round"
+        g += `<path class="mark dimmable" data-key="${esc(s.key)}" d="${arcPath(cx, cy, r0, r1, a, a1)}" fill="${s.color}" stroke="var(--surface)" stroke-width="${big ? 2 : 1.5}" stroke-linejoin="round"
           data-tip="${T({ title: periodTitle(w), rows: [{ color: s.color, value: `${pct}%`, label: `${s.label} · ${fmtN(s.v)} ${s.v === 1 ? one : many}` }] })}"/>`;
         a = a1;
       });
     }
-    g += `<text x="${cx}" y="${cy + 2}" text-anchor="middle" class="ink b" style="font-size:18px">${fmtN(total)}</text>`;
-    g += `<text x="${cx}" y="${cy + 18}" text-anchor="middle">${total === 1 ? one : many}</text>`;
-    const top = slices.slice().sort((p, q) => q.v - p.v)[0];
-    const lead = !total ? 'No activity'
-      : top.key === '__other' ? `Mostly others · ${Math.round(top.v / total * 100)}%`
-      : `Top: ${esc(fitLabel(top.label, 118))} · ${Math.round(top.v / total * 100)}%`;
+    g += `<text x="${cx}" y="${cy + (big ? 2 : 4)}" text-anchor="middle" class="ink b" style="font-size:${big ? 18 : clamp(S * 0.2, 10, 15)}px">${fmtN(total)}</text>`;
+    if (big) g += `<text x="${cx}" y="${cy + 18}" text-anchor="middle">${total === 1 ? one : many}</text>`;
+    // The top single developer this period, across everyone (including people grouped under Other).
+    let top = null;
+    for (const l of LOGINS) { const v = DEVS[l].series[key][i]; if (v > 0 && (!top || v > top.v)) top = { l, v }; }
+    const capW = Math.max(40, bw - 8), pct = total ? `${Math.round(top.v / total * 100)}%` : '';
+    const wide = capW >= 150;  // room for "Top: name · 88%" on one line; otherwise name and share stack
+    const lines = !total ? ['No activity']
+      : wide ? [`Top: ${esc(fitLabel(top.l, capW - textW('Top:  · 100%', 12)))} · ${pct}`]
+      : [esc(fitLabel(top.l, capW)), textW(`${pct} of ${many}`, 12) <= capW ? `${pct} of ${many}` : pct];
+    if (w.in_progress) lines.push('In progress');
+    const period = PKIND === 'sprint' ? w.label : w.short;
     return `<figure class="pie${w.in_progress ? ' live' : ''}">${svg(S, S, g, `${periodTitle(w)}: share of ${label}`)}
-      <figcaption><b>${esc(PKIND === 'sprint' ? w.label : 'Week of ' + w.short)}</b><br><span class="muted">${w.in_progress ? 'In progress · ' : ''}${lead}</span></figcaption></figure>`;
+      <figcaption title="${esc(total ? `Top: ${top.l} · ${pct}` : 'No activity')}"><b>${esc(fitLabel(period, capW, 12, true))}</b>${lines.map(t => `<br><span class="muted">${t}</span>`).join('')}</figcaption></figure>`;
   }).join('');
 }
 
