@@ -35,12 +35,13 @@
 html { scroll-behavior: smooth; scroll-padding-top: 64px; }
 body { margin: 0; background: var(--page); color: var(--ink);
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 72px; }
+main { max-width: 1800px; margin: 0 auto; padding: 24px 32px 72px; }
+@media (max-width: 700px) { main { padding: 20px 16px 64px; } }
 
 /* ---------- nav */
 nav.top { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--page) 88%, transparent);
   backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
-nav.top .in { max-width: 1240px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 18px; align-items: center; overflow-x: auto; }
+nav.top .in { max-width: 1800px; margin: 0 auto; padding: 10px 32px; display: flex; gap: 18px; align-items: center; overflow-x: auto; }
 nav.top .brand { font-weight: 650; white-space: nowrap; }
 nav.top a { color: var(--ink-2); text-decoration: none; font-size: 13px; white-space: nowrap; }
 nav.top a:hover { color: var(--ink); }
@@ -88,7 +89,7 @@ select, input { font: inherit; font-size: 13px; color: var(--ink); background: v
 .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .legend i.line { height: 2px; width: 14px; border-radius: 1px; }
 .legend i.dash { height: 0; width: 14px; border-top: 2px dashed var(--muted); border-radius: 0; }
-.chart svg { display: block; overflow: visible; }
+.chart svg { display: block; overflow: hidden; }  /* labels are fitted; never spill out of the card */
 svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 svg text.ink { fill: var(--ink); } svg text.ink2 { fill: var(--ink-2); }
 svg text.b { font-weight: 600; }
@@ -99,7 +100,7 @@ svg text.b { font-weight: 600; }
 .empty { color: var(--muted); font-size: 13px; padding: 28px 0; text-align: center; }
 
 /* ---------- tooltip */
-#tip { position: fixed; pointer-events: none; z-index: 20; min-width: 120px; max-width: 320px;
+#tip { position: fixed; pointer-events: none; z-index: 20; min-width: 120px; max-width: 380px;
   background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 8px;
   box-shadow: 0 6px 24px rgba(0,0,0,.14); padding: 8px 10px; font-size: 12px; opacity: 0; transition: opacity .08s; }
 #tip .t { color: var(--ink-2); margin-bottom: 4px; }
@@ -107,7 +108,7 @@ svg text.b { font-weight: 600; }
 #tip .r i { width: 12px; height: 2px; border-radius: 1px; flex: none; }
 #tip .r i.dash { height: 0; border-top: 2px dashed var(--muted); }
 #tip .r b { font-variant-numeric: tabular-nums; min-width: 34px; }
-#tip .r span { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tip .r span { color: var(--ink-2); overflow-wrap: anywhere; }
 
 /* ---------- tables */
 .tablewrap { overflow-x: auto; }

@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from .common import GitstatError, run
+from .common import GitstatError, log, run
 
 RS, US = "\x1e", "\x1f"
 LOG_FORMAT = RS + US.join(["%H", "%aN", "%aE", "%aI", "%cI", "%s"])
@@ -108,7 +108,7 @@ class IdentityMap:
         return self.lookup(name, email, login) or name or email or "unknown"
 
 
-def load_config(path: str | None) -> dict:
+def load_config(path: str | None, repo_path: str | None = None) -> dict:
     """Load .gitstat.json.
 
     {"aliases": {"email-or-name": "login"},   # merge commit identities into a login
@@ -116,13 +116,24 @@ def load_config(path: str | None) -> dict:
      "fetch_names": false,                    # fill missing names from GitHub profiles
      "exclude": ["login", ...]}
     """
-    candidates = [Path(path)] if path else [Path(".gitstat.json"), Path.home() / ".gitstat.json"]
-    for p in candidates:
+    if path:
+        candidates = [Path(path).expanduser()]
+    else:
+        candidates = [Path(".gitstat.json"), Path.home() / ".gitstat.json"]
+        if repo_path:
+            candidates.insert(1, Path(repo_path) / ".gitstat.json")
+    for p in dict.fromkeys(c.resolve() for c in candidates):
         if p.exists():
             try:
-                return json.loads(p.read_text())
+                config = json.loads(p.read_text())
             except json.JSONDecodeError as exc:
                 raise GitstatError(f"invalid JSON in {p}: {exc}") from exc
+            log(f"config: using {p}")
+            return config
     if path:
         raise GitstatError(f"config file not found: {path}")
+    stray = [p for p in (Path("names.json"), Path(repo_path or ".") / "names.json") if p.exists()]
+    if stray:
+        log(f"config: found {stray[0]} but gitstat reads .gitstat.json; rename it "
+            f"(e.g. mv {stray[0]} ~/.gitstat.json) or pass --config {stray[0]}")
     return {}

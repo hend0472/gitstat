@@ -18,7 +18,24 @@ const fmtN = v => v == null ? '–' : Number.isInteger(v) ? v.toLocaleString() :
 const fmtP = v => v == null ? '–' : Math.round(v*100)+'%';
 const fmt = (k, v) => { const kind = M[k].kind; return kind === 'hours' ? fmtH(v) : kind === 'pct' ? fmtP(v) : fmtN(v); };
 const short = d => d.slice(5).replace('-', '/');
-const textW = (s, px = 11) => String(s).length * px * 0.58;
+const _ctx = document.createElement('canvas').getContext('2d');
+const textW = (s, px = 11, bold = false) => {
+  _ctx.font = `${bold ? 600 : 400} ${px}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  return _ctx.measureText(String(s)).width;
+};
+// Fit a label into maxW: drop a trailing "(Org)" first, then truncate with an ellipsis.
+function fitLabel(s, maxW, px = 11, bold = false) {
+  s = String(s);
+  if (textW(s, px, bold) <= maxW) return s;
+  const base = s.replace(/\s*\([^)]*\)\s*$/, '') || s;
+  if (textW(base, px, bold) <= maxW) return base;
+  let out = base;
+  while (out.length > 1 && textW(out + '…', px, bold) > maxW) out = out.slice(0, -1);
+  return out.trimEnd() + '…';
+}
+// <text> content that shows a fitted label and the full name on native hover.
+const labelText = (full, fitted) => fitted === full ? esc(full) : `${esc(fitted)}<title>${esc(full)}</title>`;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 // ------------------------------------------------------------------ helpers
 const median = xs => { const s = xs.filter(x => x != null).sort((a, b) => a - b); if (!s.length) return null;
@@ -229,7 +246,7 @@ function renderLeader() {
   $('#leader-sub').textContent = `${m.help} ${m.better ? (m.better === 'lower' ? 'Lower is better.' : 'Higher is better.') : ''} Showing ${rows.length} of ${total} active developers.`;
   const plot = root.querySelector('.plot');
   if (!rows.length) { plot.innerHTML = '<div class="empty">Nobody has a value for this metric.</div>'; return; }
-  const W = widthOf(root), labelW = Math.min(170, Math.max(90, ...rows.map(r => textW(r[0], 12) + 44))), valW = 64;
+  const W = widthOf(root), labelW = clamp(Math.max(...rows.map(r => textW(r[0], 11, true))) + 48, 120, W * 0.3), valW = 64;
   const rowH = 24, P = { t: 22, b: 8 }, H = P.t + rows.length * rowH + P.b;
   const max = Math.max(...rows.map(r => r[1]), TEAM[key] ?? 0) || 1;
   const x = linear(0, max, labelW, W - valW);
@@ -238,7 +255,7 @@ function renderLeader() {
     const yy = P.t + i * rowH, sel = l === state.a ? 'a' : l === state.b ? 'b' : '';
     if (sel) g += `<rect x="0" y="${yy}" width="${W}" height="${rowH}" rx="6" fill="var(--band)"/>`;
     g += `<text x="4" y="${yy + 16}" class="${sel ? 'ink b' : 'ink2'}">${rankOf.get(l)}.</text>`;
-    g += `<text x="34" y="${yy + 16}" class="${sel ? 'ink b' : 'ink2'}">${esc(l)}</text>`;
+    g += `<text x="34" y="${yy + 16}" class="${sel ? 'ink b' : 'ink2'}">${labelText(l, fitLabel(l, labelW - 44, 11, !!sel))}</text>`;
     const color = sel === 'b' ? COLOR_B : COLOR_A;
     g += `<path class="mark dimmable" data-key="${esc(l)}" d="${roundRight(labelW, yy + 5, Math.max(1.5, x(v) - labelW), rowH - 10, 3)}" fill="${color}"/>`;
     g += `<text x="${Math.max(labelW, x(v)) + 6}" y="${yy + 16}" class="ink">${fmt(key, v)}</text>`;
@@ -260,7 +277,7 @@ function renderScatter() {
   const pts = LOGINS.map(l => ({ l, x: DEVS[l].metrics[kx], y: DEVS[l].metrics[ky] }))
     .filter(p => p.x != null && p.y != null && isActive(p.l, M[kx].section) && isActive(p.l, M[ky].section));
   if (pts.length < 2) { plot.innerHTML = '<div class="empty">Not enough developers have both values.</div>'; return; }
-  const W = widthOf(root), H = 330, P = { l: 48, r: 16, t: 14, b: 40 };
+  const W = widthOf(root), H = clamp(W * 0.62, 300, 460), P = { l: 48, r: 16, t: 14, b: 40 };
   const scale = (key, vals, r0, r1) => {
     if (M[key].kind === 'hours') { const [lo, hi] = logDomain(vals); const f = logScale(lo, hi, r0, r1); f.log = true; return f; }
     const hi = niceMax(Math.max(...vals)), med = median(vals.filter(v => v > 0));
@@ -284,11 +301,13 @@ function renderScatter() {
   // Draw selected developers last so they sit on top.
   const order = [...pts].sort((p, q) => (p.l === state.a || p.l === state.b) - (q.l === state.a || q.l === state.b));
   const labels = [];
-  const tryLabel = (px, py, text, cls) => {
-    const w = textW(text, 11) + 4, box = [px + 8, py - 12, px + 8 + w, py + 2];
-    if (box[2] > W) { box[0] = px - 8 - w; box[2] = px - 8; }
+  const tryLabel = (px, py, full, cls) => {
+    const text = fitLabel(full, Math.min(170, (W - P.l - P.r) * 0.4), 11, cls.includes(' b'));
+    const w = textW(text, 11, cls.includes(' b')) + 4, box = [px + 8, py - 12, px + 8 + w, py + 2];
+    if (box[2] > W - P.r) { box[0] = px - 8 - w; box[2] = px - 8; }
+    if (box[0] < P.l || box[1] < 0) return '';
     if (labels.some(b => !(box[2] < b[0] || box[0] > b[2] || box[3] < b[1] || box[1] > b[3]))) return '';
-    labels.push(box); return `<text x="${box[0]}" y="${py - 1}" class="${cls}">${esc(text)}</text>`;
+    labels.push(box); return `<text x="${box[0]}" y="${py - 1}" class="${cls}">${labelText(full, text)}</text>`;
   };
   let labelSvg = '';
   const byActivity = [...pts].sort((p, q) => q.x - p.x);
@@ -312,18 +331,25 @@ function renderMatrix() {
   const people = LOGINS.map(l => [l, given(l) + received(l)]).filter(([, t]) => t > 0).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([l]) => l);
   for (const l of [state.a, state.b]) if (l && !people.includes(l) && given(l) + received(l) > 0) people.push(l);
   if (people.length < 2) { plot.innerHTML = '<div class="empty">No cross-developer reviews or comments in this window.</div>'; return; }
-  const W = widthOf(root), labelW = Math.min(130, Math.max(...people.map(l => textW(l, 11))) + 12);
-  const n = people.length, cell = Math.max(14, Math.min(34, (W - labelW - 8) / n)), top = Math.min(110, Math.max(...people.map(l => textW(l, 11))) * 0.72 + 14);
+  const W = widthOf(root), n = people.length;
+  const labelW = clamp(Math.max(...people.map(l => textW(l, 11, true))) + 12, 60, W * 0.3);
+  const rowLabel = l => fitLabel(l, labelW - 12, 11, true);
+  // Column labels are rotated -50°: height = len·sin50, rightward overhang = len·cos50.
+  const colMax = clamp(Math.max(...people.map(l => textW(l, 11, true))), 30, 150);
+  const colLabel = l => fitLabel(l, colMax, 11, true);
+  const colLen = Math.max(...people.map(l => textW(colLabel(l), 11, true)));
+  const top = colLen * 0.77 + 16, overhang = colLen * 0.64;
+  const cell = clamp((W - labelW - overhang - 4) / n, 12, 46);
   const H = top + n * cell + 4;
   const max = Math.max(1, ...people.flatMap(r => people.map(c => (DEVS[r].interactions || {})[c] || 0)));
   let g = '';
   people.forEach((c, j) => {
     const cx = labelW + j * cell + cell / 2, sel = c === state.a || c === state.b;
-    g += `<text transform="translate(${cx + 3} ${top - 6}) rotate(-50)" class="${sel ? 'ink b' : ''}">${esc(c)}</text>`;
+    g += `<text transform="translate(${cx + 3} ${top - 6}) rotate(-50)" class="${sel ? 'ink b' : ''}">${labelText(c, colLabel(c))}</text>`;
   });
   people.forEach((r, i) => {
     const yy = top + i * cell, sel = r === state.a || r === state.b;
-    g += `<text x="${labelW - 8}" y="${yy + cell / 2 + 4}" text-anchor="end" class="${sel ? 'ink b' : 'ink2'}">${esc(r)}</text>`;
+    g += `<text x="${labelW - 8}" y="${yy + cell / 2 + 4}" text-anchor="end" class="${sel ? 'ink b' : 'ink2'}">${labelText(r, rowLabel(r))}</text>`;
     people.forEach((c, j) => {
       const v = r === c ? null : (DEVS[r].interactions || {})[c] || 0, xx = labelW + j * cell;
       const op = v ? 0.16 + 0.84 * Math.sqrt(v / max) : 0;
@@ -344,7 +370,7 @@ function renderStrip() {
   for (const l of [state.a, state.b]) { const r = rows.find(r => r.l === l); if (r && !topRows.includes(r)) topRows.push(r); }
   rows = topRows;
   if (!rows.length) { plot.innerHTML = '<div class="empty">No developer has two or more PRs with this measure.</div>'; return; }
-  const W = widthOf(root), labelW = Math.min(170, Math.max(...rows.map(r => textW(r.l, 12))) + 16), rightW = 118;
+  const W = widthOf(root), labelW = clamp(Math.max(...rows.map(r => textW(r.l, 11, true))) + 16, 90, W * 0.28), rightW = 118;
   const rowH = 30, P = { t: 8, b: 26 }, H = P.t + rows.length * rowH + P.b;
   const [lo, hi] = logDomain(rows.flatMap(r => r.prs.map(p => p[field])));
   const x = logScale(lo, hi, labelW, W - rightW);
@@ -354,7 +380,7 @@ function renderStrip() {
     const yy = P.t + i * rowH, mid = yy + rowH / 2, sel = r.l === state.a ? COLOR_A : r.l === state.b ? COLOR_B : null;
     if (sel) g += `<rect x="0" y="${yy}" width="${W}" height="${rowH}" rx="6" fill="var(--band)"/>`;
     g += `<line x1="${labelW}" x2="${W - rightW}" y1="${mid}" y2="${mid}" stroke="var(--grid)"/>`;
-    g += `<text x="${labelW - 10}" y="${mid + 4}" text-anchor="end" class="${sel ? 'ink b' : 'ink2'}">${esc(r.l)}</text>`;
+    g += `<text x="${labelW - 10}" y="${mid + 4}" text-anchor="end" class="${sel ? 'ink b' : 'ink2'}">${labelText(r.l, fitLabel(r.l, labelW - 16, 11, !!sel))}</text>`;
     r.prs.forEach(p => {
       const cx = x(p[field]), cy = mid + hashJitter(p.number) * (rowH - 14);
       g += `<circle class="mark" cx="${cx}" cy="${cy}" r="4" fill="${sel || 'var(--c1)'}" fill-opacity=".6" stroke="var(--surface)" stroke-width="1.5"/>`;

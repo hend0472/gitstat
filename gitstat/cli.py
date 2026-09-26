@@ -107,7 +107,7 @@ def _run(args) -> int:
     if "/" not in repo:
         raise GitstatError("--repo must look like OWNER/NAME")
 
-    config = load_config(args.config)
+    config = load_config(args.config, path if local else None)
     identity = IdentityMap(config.get("aliases"))
     exclude = set(args.exclude) | set(config.get("exclude", []))
 

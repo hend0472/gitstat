@@ -81,13 +81,13 @@ Team medians and ranks only include developers who were active in the same area.
 If logins are SSO numbers or handles nobody recognises, give people display names. Names only change how people are shown. Which commits and PRs belong to whom is unchanged, and the login stays visible next to the name (e.g. "Jane Doe (@a123456)").
 
 ```sh
-gitstat --print-names > names.json   # a "names" block for everyone in the window, pre-filled from GitHub profiles
+gitstat --print-names > ~/.gitstat.json   # a "names" block for everyone in the window, pre-filled from GitHub profiles
 gitstat --fetch-names                # use GitHub profile names for anyone not listed in the config
 gitstat --no-names                   # show raw logins
 gitstat --author "Jane Doe"          # --author accepts a login or a display name
 ```
 
-Paste the `names` block into `.gitstat.json` and edit it. Names from the config always win over GitHub profile names. Set `"fetch_names": true` in the config to always fill in the rest from profiles. Profile names are cached for a week.
+Edit the names in that file. If you already have a `.gitstat.json`, merge the `names` block into it rather than overwriting it. gitstat reads `.gitstat.json` from the current directory, then the repo given with `--path`, then your home directory, or any file passed with `--config`. It prints which file it used. A config in your home directory keeps employee names out of the repo. Names from the config always win over GitHub profile names. Set `"fetch_names": true` in the config to always fill in the rest from profiles. Profile names are cached for a week.
 
 When profile names are fetched, commits whose author name matches exactly one GitHub profile name are credited to that account, and each match is logged. Commit authors that still aren't linked to a login are listed by `--print-names`. Map those under `aliases`.
 
