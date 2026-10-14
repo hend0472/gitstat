@@ -135,6 +135,8 @@ def _window(args, config: dict):
 
 def _run(args) -> int:
     path = str(Path(args.path).expanduser().resolve())
+    if not os.path.isdir(path):
+        raise GitstatError(f"--path {args.path}: no such directory")
     local = is_git_repo(path)
     repo = args.repo or detect_repo(path if local else None)
     if "/" not in repo:
