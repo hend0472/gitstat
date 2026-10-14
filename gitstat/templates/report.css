@@ -166,3 +166,5 @@ dl.gloss dt { font-weight: 600; } dl.gloss dd { margin: 0; color: var(--ink-2); 
   nav.top, .controls, .toolbar input { display: none; }
   .card { break-inside: avoid; }
 }
+.tag { display: inline-block; padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 600; letter-spacing: .03em;
+  background: var(--chip-good); color: var(--good); vertical-align: 1px; }

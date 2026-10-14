@@ -48,6 +48,8 @@ METRICS: list[Metric] = [
     Metric("self_merged", "Self-merged PRs", "Authoring", "count", None, "Their PRs they merged themselves."),
     Metric("base_merges", "Base branch merges", "Authoring", "count", None, "Times they merged the target branch (e.g. develop or main) into a PR branch to bring it up to date, including GitHub's 'Update branch' button."),
     Metric("force_pushes", "Force pushes", "Authoring", "count", None, "Force pushes to their PR branches, usually a rebase onto the latest target branch."),
+    Metric("prs_noticket", "Self-initiated PRs", "Authoring", "count", "higher", "PRs opened without a ticket: the title starts with [NOTICKET] or the branch with NOTICKET. Improvements nobody asked for."),
+    Metric("noticket_rate", "Self-initiated share", "Authoring", "pct", None, "Share of their PRs opened that were self-initiated ([NOTICKET])."),
     Metric("prs_kept_current", "PRs kept up to date", "Authoring", "count", "higher", "Distinct PRs of theirs they updated from the target branch (merge or force push)."),
     # --- Reviewing
     Metric("reviews_given", "Reviews given", "Reviewing", "count", "higher", "Reviews submitted on others' PRs."),
@@ -115,6 +117,16 @@ def is_base_sync(headline: str | None, parents: int, base: str | None) -> bool:
         return False
     source = m.group(1).split("/")[-1].lower() if m.group(1).startswith(("origin/", "upstream/")) else m.group(1).lower()
     return source == (base or "").lower() or source in _TRUNKS
+
+
+# "[NOTICKET] Tidy up logging" or a branch like "NOTICKET-cleanup" / "jane/no-ticket-x".
+_NOTICKET_TITLE = re.compile(r"^\s*\[\s*NO[ _-]?TICKET\s*\]", re.I)
+_NOTICKET_BRANCH = re.compile(r"(?:^|/)NO[ _-]?TICKET", re.I)
+
+
+def is_noticket(title: str | None, branch: str | None) -> bool:
+    """A PR raised without a ticket, i.e. work the developer chose to do themselves."""
+    return bool(_NOTICKET_TITLE.match(title or "") or _NOTICKET_BRANCH.search(branch or ""))
 
 
 def compute(prs: list[dict], commits: list[dict], since: datetime, until: datetime,
@@ -275,6 +287,8 @@ def compute(prs: list[dict], commits: list[dict], since: datetime, until: dateti
             d.lists["pr_size"].append(pr["additions"] + pr["deletions"])
             d.lists["pr_files"].append(pr["changedFiles"])
             d.lists["pr_commits_count"].append(pr["commits"]["totalCount"])
+            noticket = is_noticket(pr["title"], pr.get("headRefName"))
+            d.c["prs_noticket"] += noticket
             if pr["state"] == "OPEN":
                 d.c["prs_open_now"] += 1
             if first_review:
@@ -289,7 +303,7 @@ def compute(prs: list[dict], commits: list[dict], since: datetime, until: dateti
             d.prs.append({
                 "number": pr["number"], "title": pr["title"], "url": pr["url"], "state": pr["state"],
                 "created": pr["createdAt"], "merged": pr.get("mergedAt"),
-                "size": pr["additions"] + pr["deletions"],
+                "size": pr["additions"] + pr["deletions"], "noticket": noticket,
                 "hours_to_merge": hours_between(created, merged_at) if merged_at else None,
                 "hours_to_first_review": d.lists["ttfr"][-1] if first_review else None,
             })
@@ -436,6 +450,8 @@ def _finalize(d: _Dev, n_weeks: float) -> dict:
         "self_merged": c["self_merged"],
         "base_merges": c["base_merges"],
         "force_pushes": c["force_pushes"],
+        "prs_noticket": c["prs_noticket"],
+        "noticket_rate": ratio(c["prs_noticket"], c["prs_opened"]),
         "prs_kept_current": c["prs_kept_current"],
         "reviews_given": c["reviews_given"],
         "approvals_given": c["approvals_given"],
@@ -550,6 +566,10 @@ def insights(dev: dict, team: dict) -> list[dict]:
         add("watch", f"{m['off_hours_pct'] * 100:.0f}% of commits are on weekends or outside 08:00–19:00; check workload.")
     if m["prs_opened"] >= 3 and m["changes_requested_rate"] is not None and over("changes_requested_rate", 2, min_team=0.05):
         add("watch", f"{m['changes_requested_rate'] * 100:.0f}% of PRs needed changes vs team {team['changes_requested_rate'] * 100:.0f}%.")
+
+    if m["prs_noticket"] >= 2:
+        add("strength", f"Opened {m['prs_noticket']} self-initiated PRs ([NOTICKET], {m['noticket_rate'] * 100:.0f}% of their PRs): "
+                        "improvements made without being asked.")
 
     ranks = dev.get("ranks", {})
     for key in ("reviews_given", "review_turnaround_median", "prs_merged", "time_to_merge_median",

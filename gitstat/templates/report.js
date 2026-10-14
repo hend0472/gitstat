@@ -234,7 +234,7 @@ function arcPath(cx, cy, r0, r1, a0, a1) {
   return `M${p(r1, a0)} A${r1},${r1} 0 ${large} 1 ${p(r1, a1)} L${p(r0, a1)} A${r0},${r0} 0 ${large} 0 ${p(r0, a0)} Z`;
 }
 function renderPies(root, series, key, T) {
-  const label = STACK_SERIES.find(([k]) => k === key)[1].toLowerCase();
+  const label = STACK_SERIES.find(([k]) => k === key)[1].replace(/^[A-Z][a-z]/, m => m.toLowerCase());  // 'commits', but keep 'PRs'
   root.querySelector('.pies-title').textContent = `Share of ${label} per ${PKIND}`;
   const [one, many] = UNIT[key];
   // Same columns as the bars above: identical left/right padding and one equal column per period.
@@ -267,18 +267,34 @@ function renderPies(root, series, key, T) {
     }
     g += `<text x="${cx}" y="${cy + (big ? 2 : 4)}" text-anchor="middle" class="ink b" style="font-size:${big ? 18 : clamp(S * 0.2, 10, 15)}px">${fmtN(total)}</text>`;
     if (big) g += `<text x="${cx}" y="${cy + 18}" text-anchor="middle">${total === 1 ? one : many}</text>`;
-    // The top single developer this period, across everyone (including people grouped under Other).
-    let top = null;
-    for (const l of LOGINS) { const v = DEVS[l].series[key][i]; if (v > 0 && (!top || v > top.v)) top = { l, v }; }
-    const capW = Math.max(40, bw - 8), pct = total ? `${Math.round(top.v / total * 100)}%` : '';
-    const wide = capW >= 150;  // room for "Top: name · 88%" on one line; otherwise name and share stack
-    const lines = !total ? ['No activity']
-      : wide ? [`Top: ${esc(fitLabel(top.l, capW - textW('Top:  · 100%', 12)))} · ${pct}`]
-      : [esc(fitLabel(top.l, capW)), textW(`${pct} of ${many}`, 12) <= capW ? `${pct} of ${many}` : pct];
+    // The top developer(s) this period, across everyone (including people grouped under Other).
+    let best = 0;
+    for (const l of LOGINS) best = Math.max(best, DEVS[l].series[key][i]);
+    const leaders = best > 0 ? LOGINS.filter(l => DEVS[l].series[key][i] === best) : [];
+    const capW = Math.max(40, bw - 8), pct = total ? `${Math.round(best / total * 100)}%` : '';
+    const wide = capW >= 150;  // room for everything on one line; otherwise stack
+    const lines = [];
+    if (!total) {
+      lines.push('No activity');
+    } else if (leaders.length === 1) {
+      lines.push(...(wide ? [`Top: ${esc(fitLabel(leaders[0], capW - textW('Top:  · 100%', 12)))} · ${pct}`]
+        : [esc(fitLabel(leaders[0], capW)), textW(`${pct} of ${many}`, 12) <= capW ? `${pct} of ${many}` : pct]));
+    } else {
+      // A tie: say so, then give each tied person their own line so every name is readable.
+      const k = leaders.length, shown = k <= 3 ? leaders : leaders.slice(0, 2);
+      const head = k === 2 ? 'Tied for top' : `${k}-way tie for top`;
+      lines.push(textW(head, 12) <= capW ? head : `Tied (${k})`);
+      shown.forEach(l => lines.push(`<span style="color:var(--ink)">${esc(fitLabel(l, capW))}</span>`));
+      if (k > shown.length) lines.push(`+${k - shown.length} more`);
+      lines.push(`${pct} each`);
+    }
     if (w.in_progress) lines.push('In progress');
+    const full = !total ? 'No activity'
+      : leaders.length === 1 ? `Top: ${leaders[0]} · ${pct}`
+      : `Tied for top with ${fmtN(best)} ${best === 1 ? one : many} each (${pct}): ${leaders.join(', ')}`;
     const period = PKIND === 'sprint' ? w.label : w.short;
     return `<figure class="pie${w.in_progress ? ' live' : ''}">${svg(S, S, g, `${periodTitle(w)}: share of ${label}`)}
-      <figcaption title="${esc(total ? `Top: ${top.l} · ${pct}` : 'No activity')}"><b>${esc(fitLabel(period, capW, 12, true))}</b>${lines.map(t => `<br><span class="muted">${t}</span>`).join('')}</figcaption></figure>`;
+      <figcaption title="${esc(full)}"><b>${esc(fitLabel(period, capW, 12, true))}</b>${lines.map(t => `<br><span class="muted">${t}</span>`).join('')}</figcaption></figure>`;
   }).join('');
 }
 
@@ -495,9 +511,9 @@ function renderStrip() {
 
 // ------------------------------------------------------------------ developer table
 const COLS = ['prs_opened','prs_merged','time_to_merge_median','time_to_first_review_median','pr_size_median',
-  'prs_kept_current','reviews_given','approvals_given','review_comments_given','review_turnaround_median','commits','active_days'];
+  'prs_noticket','prs_kept_current','reviews_given','approvals_given','review_comments_given','review_turnaround_median','commits','active_days'];
 const SHORT = { prs_opened: 'PRs', prs_merged: 'Merged', time_to_merge_median: 'Time to merge', time_to_first_review_median: 'Wait for feedback',
-  pr_size_median: 'PR size', prs_kept_current: 'Kept up to date', reviews_given: 'Reviews', approvals_given: 'Approvals', review_comments_given: 'Review comments',
+  pr_size_median: 'PR size', prs_noticket: 'Self-initiated', prs_kept_current: 'Kept up to date', reviews_given: 'Reviews', approvals_given: 'Approvals', review_comments_given: 'Review comments',
   review_turnaround_median: 'Review turnaround', commits: 'Commits', active_days: 'Active days' };
 let sortKey = null, sortDir = 'desc';
 const activity = l => WEEKS.map((_, i) => ['commits', 'prs_opened', 'reviews'].reduce((a, k) => a + DEVS[l].series[k][i], 0));
@@ -663,7 +679,7 @@ function renderDetail() {
       ? `<ul class="insights">${ins.map(i => `<li class="${i.kind}"><span class="k">${{ strength: 'Strength', improve: 'Improve', watch: 'Watch' }[i.kind]}</span><span>${esc(i.text)}</span></li>`).join('')}</ul>`
       : '<p class="muted" style="margin:0">Nothing stands out against the team baseline in this window.</p>') + '</div>';
   };
-  const prs = d.prs.slice(0, 12).map(p => `<tr><td class="title" title="${esc(p.title)}"><a href="${esc(p.url)}" target="_blank" rel="noopener">#${p.number}</a> ${esc(p.title)}</td>` +
+  const prs = d.prs.slice(0, 12).map(p => `<tr><td class="title" title="${esc(p.title)}"><a href="${esc(p.url)}" target="_blank" rel="noopener">#${p.number}</a> ${p.noticket ? '<span class="tag" title="Self-initiated: no ticket">NOTICKET</span> ' : ''}${esc(p.title)}</td>` +
     `<td>${p.state.toLowerCase()}</td><td>${fmtN(p.size)}</td><td>${fmtH(p.hours_to_first_review)}</td><td>${fmtH(p.hours_to_merge)}</td></tr>`).join('');
   body.innerHTML = `
     <div class="dev-bar">

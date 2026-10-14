@@ -16,7 +16,7 @@ query($owner: String!, $name: String!, $pageSize: Int!, $cursor: String) {
       pageInfo { hasNextPage endCursor }
       nodes {
         number title url state isDraft createdAt updatedAt mergedAt closedAt
-        additions deletions changedFiles baseRefName
+        additions deletions changedFiles baseRefName headRefName
         author { __typename login }
         mergedBy { login }
         reviews(first: 60) {
@@ -116,7 +116,7 @@ def _cache_path(repo: str) -> Path:
 
 
 # Bump when PR_QUERY gains fields, so older caches are refetched instead of silently lacking data.
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 
 
 def _load_cache(repo: str) -> dict:

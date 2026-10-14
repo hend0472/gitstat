@@ -22,6 +22,7 @@ OVERVIEW = [
     ("reviews_given", "Reviews"),
     ("approvals_given", "Approve"),
     ("changes_requested_given", "ReqChg"),
+    ("prs_noticket", "NoTkt"),
     ("prs_kept_current", "Updated"),
     ("review_comments_given", "Comments"),
     ("review_turnaround_median", "Rev TAT"),
@@ -113,7 +114,7 @@ def render_text(report: dict, repo: str, detail: list[str] | None, color: bool |
     rows.append([st.dim("team median")] + [fmt(k, team[k]) for k, _ in OVERVIEW] + [""])
     out.append(st.bold("Team overview"))
     out.extend(_table(headers, rows))
-    out.append(st.dim("TTM = median time to merge · 1st fb = median wait for first review/comment · Updated = PRs brought up to date from the target branch · Rev TAT = median review turnaround after being requested"))
+    out.append(st.dim("TTM = median time to merge · 1st fb = median wait for first review/comment · NoTkt = self-initiated PRs ([NOTICKET]) · Updated = PRs brought up to date from the target branch · Rev TAT = median review turnaround after being requested"))
 
     for login in detail or []:
         if login not in devs:
@@ -151,7 +152,7 @@ def _render_dev(d: dict, report: dict, st: _Style) -> list[str]:
         out.append("")
     if d["prs"]:
         out.append(st.bold("  Recent PRs"))
-        rows = [[f"#{p['number']}", p["title"][:60], p["state"].lower(), fmt_num(p["size"]),
+        rows = [[f"#{p['number']}", ("◆ " if p.get("noticket") else "") + p["title"][:60], p["state"].lower(), fmt_num(p["size"]),
                  fmt_hours(p["hours_to_first_review"]), fmt_hours(p["hours_to_merge"])] for p in d["prs"][:10]]
         out.extend("  " + line for line in _table(["PR", "Title", "State", "Lines", "1st feedback", "Merge"], rows, align_left=3))
     return out

@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 from gitstat.gitdata import IdentityMap
-from gitstat.metrics import compute, is_base_sync
+from gitstat.metrics import compute, is_base_sync, is_noticket
 from gitstat.periods import parse_length, sprints, weekly
 
 from test_metrics import pr
@@ -45,6 +45,16 @@ class BaseSyncTest(unittest.TestCase):
         self.assertFalse(is_base_sync("fix: handle develop branch", 2, "develop"))
 
 
+class NoTicketTest(unittest.TestCase):
+    def test_title_or_branch(self):
+        self.assertTrue(is_noticket("[NOTICKET] Tidy up logging", "fix/logging"))
+        self.assertTrue(is_noticket(" [noticket] lowercase", None))
+        self.assertTrue(is_noticket("Tidy up logging", "NOTICKET-cleanup"))
+        self.assertTrue(is_noticket("Tidy up logging", "jane/noticket/cleanup"))
+        self.assertFalse(is_noticket("[ABC-123] Add feature", "feature/ABC-123"))
+        self.assertFalse(is_noticket("Mention NOTICKET later", "feature/x-noticket"))
+
+
 def with_commit_meta(p, meta):
     for node, (headline, parents) in zip(p["commits"]["nodes"], meta):
         node["commit"]["messageHeadline"] = headline
@@ -64,6 +74,7 @@ class ComputeTest(unittest.TestCase):
         a["timelineItems"]["nodes"].append({"__typename": "HeadRefForcePushedEvent", "createdAt": "2026-01-08T12:00:00Z",
                                             "actor": {"__typename": "User", "login": "alice"}})
         b = pr(2, "alice", "2026-01-10T10:00:00Z", comments=[("bob", "2026-01-11T10:00:00Z")])
+        b["headRefName"] = "NOTICKET-faster-tests"
         c = pr(3, "carol", "2026-01-12T10:00:00Z", reviews=[("bob", "APPROVED", "2026-01-12T12:00:00Z")])
         self.report = compute([a, b, c], [], since, until, IdentityMap(),
                               periods=sprints(datetime(2026, 1, 6, tzinfo=UTC), 14, since, until))
@@ -76,6 +87,13 @@ class ComputeTest(unittest.TestCase):
         self.assertEqual(m["pr_commits"], 2)  # the sync merge isn't counted as work
         # Feedback at 01-06 10:00 -> next real commit 01-08 09:00 (the 01-07 merge doesn't count).
         self.assertEqual(m["feedback_to_commit_median"], 47.0)
+
+    def test_self_initiated_prs(self):
+        alice = self.report["developers"]["alice"]
+        self.assertEqual(alice["metrics"]["prs_noticket"], 1)
+        self.assertEqual(alice["metrics"]["noticket_rate"], 0.5)
+        self.assertEqual([p["noticket"] for p in alice["prs"]], [True, False])
+        self.assertEqual(self.report["developers"]["carol"]["metrics"]["prs_noticket"], 0)
 
     def test_review_coverage_for_percentages(self):
         devs = self.report["developers"]

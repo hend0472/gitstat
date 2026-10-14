@@ -49,6 +49,8 @@ Every metric is computed per developer for the chosen window. Time metrics use w
 
 **Authoring**: PRs opened, merged, closed unmerged and still open. Merge rate, PRs per week, and time between PRs. PR size in lines and files, and commits per PR. Wait for first feedback, time to merge (median and p90), and how often PRs needed changes. Comments received per PR. **Feedback → next commit** is how long after a reviewer's comment the author pushes a change. **Feedback → reply** is how long until they answer. Also counts PRs merged without approval and self-merged PRs.
 
+**Self-initiated work**: **self-initiated PRs** counts PRs opened without a ticket, i.e. improvements nobody asked for. A PR counts when its title starts with `[NOTICKET]` or its branch name starts with `NOTICKET` (also after a prefix, e.g. `jane/NOTICKET-cleanup`); matching ignores case. **Self-initiated share** is the fraction of someone's PRs that were self-initiated. These PRs are tagged in the recent PRs lists.
+
 **Keeping PRs up to date**: **base branch merges** count merges of the target branch (e.g. `develop` or `main`) into a PR branch, including GitHub's "Update branch" button. **Force pushes** usually mean a rebase onto the latest target branch. **PRs kept up to date** counts the distinct PRs someone updated either way. These merges aren't counted as commits or as responses to review feedback.
 
 **Reviewing**: reviews given, approvals, changes requested, inline and conversation comments. PRs and teammates reviewed. PRs merged for others. Review requests received, the share answered, and **review turnaround** (from the review request to the submitted review, median and p90).
