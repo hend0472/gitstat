@@ -9,6 +9,8 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
+_QUIET = False
+
 
 class GitstatError(RuntimeError):
     pass
@@ -30,7 +32,14 @@ def run_json(cmd: list[str], cwd: str | None = None):
     return json.loads(run(cmd, cwd=cwd))
 
 
+def set_quiet(enabled: bool) -> None:
+    global _QUIET
+    _QUIET = enabled
+
+
 def log(msg: str) -> None:
+    if _QUIET:
+        return
     print(msg, file=sys.stderr, flush=True)
 
 

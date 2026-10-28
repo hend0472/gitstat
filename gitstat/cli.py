@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .common import GitstatError, log, now_utc, parse_when, run
+from .common import GitstatError, log, now_utc, parse_when, run, set_quiet
 from .ghdata import (
     detect_repo, fetch_default_branch_commits, fetch_pull_requests, lookup_commit_logins,
 )
@@ -63,6 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-names", action="store_true", help="show raw GitHub logins instead of display names")
     p.add_argument("--print-names", action="store_true",
                    help="print a \"names\" config block for everyone in the window, then exit")
+    p.add_argument("--quiet", action="store_true", help="suppress progress logs on stderr")
     p.add_argument("--include-bots", action="store_true", help="include bot accounts")
     p.add_argument("--exclude", action="append", default=[], metavar="LOGIN", help="ignore this login (repeatable)")
     p.add_argument("--config", help="path to a .gitstat.json config with aliases/excludes")
@@ -134,6 +135,7 @@ def _window(args, config: dict):
 
 
 def _run(args) -> int:
+    set_quiet(args.quiet or args.print_names)
     path = str(Path(args.path).expanduser().resolve())
     if not os.path.isdir(path):
         raise GitstatError(f"--path {args.path}: no such directory")
