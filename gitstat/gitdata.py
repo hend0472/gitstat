@@ -124,8 +124,13 @@ def load_config(path: str | None, repo_path: str | None = None) -> dict:
             candidates.insert(1, Path(repo_path) / ".gitstat.json")
     for p in dict.fromkeys(c.resolve() for c in candidates):
         if p.exists():
+            text = p.read_text()
+            # `gitstat --print-names > ~/.gitstat.json` truncates the file before gitstat reads it.
+            if not text.strip():
+                log(f"config: {p} is empty, ignoring it")
+                return {}
             try:
-                config = json.loads(p.read_text())
+                config = json.loads(text)
             except json.JSONDecodeError as exc:
                 raise GitstatError(f"invalid JSON in {p}: {exc}") from exc
             log(f"config: using {p}")

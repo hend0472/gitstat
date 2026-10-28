@@ -119,7 +119,7 @@ gitstat --no-names                   # show raw logins
 gitstat --author "Jane Doe"          # --author accepts a login or a display name
 ```
 
-`--print-names` is intentionally quiet so the redirected file contains only JSON.
+`--print-names` is intentionally quiet so the redirected file contains only JSON. The shell empties the target file before gitstat runs, so redirecting onto an existing `.gitstat.json` wipes its aliases and names (gitstat treats the empty file as no config). Write to a new file and merge instead.
 
 Edit the names in that file. If you already have a `.gitstat.json`, merge the `names` block into it rather than overwriting it. gitstat reads `.gitstat.json` from the current directory, then the repo given with `--path`, then your home directory, or any file passed with `--config`. It prints which file it used. A config in your home directory keeps employee names out of the repo. Names from the config always win over GitHub profile names. Set `"fetch_names": true` in the config to always fill in the rest from profiles. Profile names are cached for a week.
 
